@@ -1,0 +1,36 @@
+:root {
+  --bg:           #F4F4F0;
+  --surface:      #FFFFFF;
+  --text:         #111110;
+  --text-muted:   #74746E;
+  --accent:       #1C3B2E;
+  --border:       #DEDED8;
+  --border-focus: #1C3B2E;
+  --benign:       #1A6B42;
+  --benign-bg:    #EEF8F3;
+  --benign-bd:    #B3D9C4;
+  --malignant:    #B83232;
+  --malignant-bg: #FDF1F1;
+  --malignant-bd: #E8BABA;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body), sans-serif;
+}
+
+button {
+  font-family: inherit;
+}
