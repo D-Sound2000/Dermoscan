@@ -1,17 +1,34 @@
 :root {
-  --bg:           #F4F4F0;
-  --surface:      #FFFFFF;
-  --text:         #111110;
-  --text-muted:   #74746E;
-  --accent:       #1C3B2E;
-  --border:       #DEDED8;
-  --border-focus: #1C3B2E;
-  --benign:       #1A6B42;
-  --benign-bg:    #EEF8F3;
-  --benign-bd:    #B3D9C4;
-  --malignant:    #B83232;
-  --malignant-bg: #FDF1F1;
-  --malignant-bd: #E8BABA;
+  /* Backgrounds */
+  --bg:              #0F172A;
+  --surface:         #1A2744;
+  --surface-2:       #1E2E4E;
+  --surface-3:       #243558;
+  --grid-line:       rgba(148, 163, 184, 0.04);
+
+  /* Borders */
+  --border:          #2A3F62;
+  --border-2:        #3A5070;
+
+  /* Text */
+  --text:            #E2E8F4;
+  --text-muted:      #7C93B8;
+  --text-dim:        #3D5275;
+
+  /* Accent — clinical blue */
+  --accent:          #4A8CF7;
+  --accent-dim:      rgba(74, 140, 247, 0.12);
+  --accent-glow:     rgba(74, 140, 247, 0.28);
+
+  /* Benign — teal */
+  --benign:          #2DD4A5;
+  --benign-dim:      rgba(45, 212, 165, 0.08);
+  --benign-bd:       rgba(45, 212, 165, 0.22);
+
+  /* Malignant — coral */
+  --malignant:       #F87171;
+  --malignant-dim:   rgba(248, 113, 113, 0.08);
+  --malignant-bd:    rgba(248, 113, 113, 0.22);
 }
 
 *, *::before, *::after {
@@ -28,9 +45,17 @@ html {
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: var(--font-body), sans-serif;
+  font-family: var(--font-sans), system-ui, sans-serif;
 }
 
 button {
   font-family: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+}
+
+img {
+  display: block;
+  max-width: 100%;
 }
