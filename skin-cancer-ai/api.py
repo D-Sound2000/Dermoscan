@@ -36,8 +36,9 @@ from gradcam import GradCAM, overlay_heatmap, pil_to_base64
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-CHECKPOINT_PATH = Path(os.getenv("CHECKPOINT_PATH", "best_model.pth"))
-THRESHOLD       = float(os.getenv("THRESHOLD", "0.5"))
+CHECKPOINT_PATH  = Path(os.getenv("CHECKPOINT_PATH", "best_model.pth"))
+_THRESHOLD_ENV   = os.getenv("THRESHOLD")          # explicit override wins
+_THRESHOLD_DEFAULT = 0.2274                         # calibrated threshold (fallback if checkpoint has none)
 
 CLASSES     = ["Benign", "Malignant"]
 NUM_CLASSES = 2
@@ -65,17 +66,18 @@ def build_model() -> nn.Module:
     return model
 
 
-def load_model(ckpt_path: Path, device: torch.device) -> nn.Module:
+def load_model(ckpt_path: Path, device: torch.device) -> tuple[nn.Module, float | None]:
     if not ckpt_path.exists():
         raise FileNotFoundError(f"Checkpoint not found: {ckpt_path}")
     ckpt = torch.load(ckpt_path, map_location=device, weights_only=True)
     model = build_model()
     model.load_state_dict(ckpt["model_state_dict"])
     model.to(device).eval()
-    epoch   = ckpt.get("epoch", "?")
-    val_auc = ckpt.get("val_auc", 0.0)
+    epoch          = ckpt.get("epoch", "?")
+    val_auc        = ckpt.get("val_auc", 0.0)
+    ckpt_threshold = ckpt.get("threshold")   # None if not present (old checkpoint)
     print(f"Loaded checkpoint — epoch {epoch}, val_auc {val_auc:.4f}")
-    return model
+    return model, ckpt_threshold
 
 
 # ── Preprocessing ─────────────────────────────────────────────────────────────
@@ -104,14 +106,24 @@ app.add_middleware(
 
 _device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 _model: nn.Module | None = None
+THRESHOLD: float = _THRESHOLD_DEFAULT
 
 
 @app.on_event("startup")
 def startup() -> None:
-    global _model
+    global _model, THRESHOLD
     print(f"Device: {_device}")
     try:
-        _model = load_model(CHECKPOINT_PATH, _device)
+        _model, ckpt_threshold = load_model(CHECKPOINT_PATH, _device)
+        if _THRESHOLD_ENV is not None:
+            THRESHOLD = float(_THRESHOLD_ENV)
+            print(f"Threshold overridden by env var: {THRESHOLD}")
+        elif ckpt_threshold is not None:
+            THRESHOLD = ckpt_threshold
+            print(f"Threshold loaded from checkpoint: {THRESHOLD}")
+        else:
+            THRESHOLD = _THRESHOLD_DEFAULT
+            print(f"Threshold using default: {THRESHOLD}")
         print("Model ready.")
     except FileNotFoundError as exc:
         print(f"WARNING: {exc}. /predict will return 503 until a checkpoint is available.")
@@ -123,6 +135,7 @@ class Prediction(BaseModel):
     predicted_class: str
     malignant_probability: float
     benign_probability: float
+    threshold_used: float
     recommendation: str
 
 
@@ -130,6 +143,7 @@ class PredictionWithHeatmap(BaseModel):
     predicted_class: str
     malignant_probability: float
     benign_probability: float
+    threshold_used: float
     recommendation: str
     heatmap_image: str   # base64 data-URI  (data:image/jpeg;base64,...)
 
@@ -191,6 +205,7 @@ async def predict(file: UploadFile = File(...)) -> Prediction:
         predicted_class=predicted,
         malignant_probability=malignant_prob,
         benign_probability=benign_prob,
+        threshold_used=THRESHOLD,
         recommendation=RECOMMENDATIONS[predicted],
     )
 
@@ -252,6 +267,7 @@ async def predict_with_heatmap(file: UploadFile = File(...)) -> PredictionWithHe
         predicted_class=predicted,
         malignant_probability=malignant_prob,
         benign_probability=benign_prob,
+        threshold_used=THRESHOLD,
         recommendation=RECOMMENDATIONS[predicted],
         heatmap_image=heatmap_b64,
     )
