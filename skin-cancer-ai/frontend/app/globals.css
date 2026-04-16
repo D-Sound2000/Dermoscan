@@ -1,30 +1,61 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-/* Dynamic CSS variables used by SVG ring, bar fills, and scan animations */
 :root {
-  --benign: #2DD4A5;
-  --benign-dim: rgba(45, 212, 165, 0.08);
-  --benign-bd: rgba(45, 212, 165, 0.22);
-  --malignant: #F87171;
-  --malignant-dim: rgba(248, 113, 113, 0.08);
-  --malignant-bd: rgba(248, 113, 113, 0.22);
-  --accent: #8B5CF6;
-  --accent-glow: rgba(139, 92, 246, 0.30);
+  /* Backgrounds */
+  --bg:              #0F172A;
+  --surface:         #1A2744;
+  --surface-2:       #1E2E4E;
+  --surface-3:       #243558;
+  --grid-line:       rgba(148, 163, 184, 0.04);
+
+  /* Borders */
+  --border:          #2A3F62;
+  --border-2:        #3A5070;
+
+  /* Text */
+  --text:            #E2E8F4;
+  --text-muted:      #7C93B8;
+  --text-dim:        #3D5275;
+
+  /* Accent — clinical blue */
+  --accent:          #4A8CF7;
+  --accent-dim:      rgba(74, 140, 247, 0.12);
+  --accent-glow:     rgba(74, 140, 247, 0.28);
+
+  /* Benign — teal */
+  --benign:          #2DD4A5;
+  --benign-dim:      rgba(45, 212, 165, 0.08);
+  --benign-bd:       rgba(45, 212, 165, 0.22);
+
+  /* Malignant — coral */
+  --malignant:       #F87171;
+  --malignant-dim:   rgba(248, 113, 113, 0.08);
+  --malignant-bd:    rgba(248, 113, 113, 0.22);
 }
 
-@layer base {
-  html {
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-    scroll-behavior: smooth;
-  }
-  body {
-    font-family: var(--font-sans), system-ui, sans-serif;
-  }
-  img {
-    display: block;
-    max-width: 100%;
-  }
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans), system-ui, sans-serif;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+}
+
+img {
+  display: block;
+  max-width: 100%;
 }

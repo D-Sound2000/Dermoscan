@@ -1,5 +1,4 @@
 import { Inter, Space_Grotesk, DM_Mono } from 'next/font/google';
-import ThemeProvider from '../components/ThemeProvider';
 import './globals.css';
 
 const inter = Inter({
@@ -29,11 +28,9 @@ export default function RootLayout({ children }) {
   return (
     <html
       lang="en"
-      className={`dark ${inter.variable} ${spaceGrotesk.variable} ${dmMono.variable}`}
+      className={`${inter.variable} ${spaceGrotesk.variable} ${dmMono.variable}`}
     >
-      <body className="bg-dark-bg text-white">
-        <ThemeProvider>{children}</ThemeProvider>
-      </body>
+      <body>{children}</body>
     </html>
   );
 }
