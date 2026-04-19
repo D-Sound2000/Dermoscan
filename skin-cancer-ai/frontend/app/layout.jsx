@@ -1,16 +1,17 @@
-import { Inter, Space_Grotesk, DM_Mono } from 'next/font/google';
+import { Cormorant_Garamond, DM_Sans, DM_Mono } from 'next/font/google';
 import './globals.css';
 
-const inter = Inter({
+const cormorant = Cormorant_Garamond({
   subsets: ['latin'],
-  weight: ['400', '500', '600'],
-  variable: '--font-sans',
+  weight: ['300', '400', '600'],
+  style: ['normal', 'italic'],
+  variable: '--font-serif',
 });
 
-const spaceGrotesk = Space_Grotesk({
+const dmSans = DM_Sans({
   subsets: ['latin'],
-  weight: ['500', '600', '700'],
-  variable: '--font-display',
+  weight: ['300', '400', '500', '600'],
+  variable: '--font-sans',
 });
 
 const dmMono = DM_Mono({
@@ -20,15 +21,15 @@ const dmMono = DM_Mono({
 });
 
 export const metadata = {
-  title: 'DermoScan — AI Lesion Analysis',
-  description: 'AI-assisted skin lesion binary classification using DenseNet121.',
+  title: 'DermoScan — AI Skin Analysis',
+  description: 'Dermoscopic binary classification using DenseNet-121, trained on ISIC 2020 at Val AUC 0.9869.',
 };
 
 export default function RootLayout({ children }) {
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${spaceGrotesk.variable} ${dmMono.variable}`}
+      className={`${cormorant.variable} ${dmSans.variable} ${dmMono.variable}`}
     >
       <body>{children}</body>
     </html>

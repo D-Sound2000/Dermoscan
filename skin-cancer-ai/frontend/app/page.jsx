@@ -1,67 +1,374 @@
 'use client';
 
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import s from './page.module.css';
 
-const API_URL = 'http://localhost:8000/predict-with-heatmap';
+const API_URL = 'http://172.24.76.36:8000/predict-with-heatmap';
 
-// SVG confidence ring constants
-const RING_R    = 52;
-const RING_CIRC = 2 * Math.PI * RING_R;
+/* ── Cursor glow ─────────────────────────────────────────── */
+function CursorGlow() {
+  const ref = useRef(null);
+  useEffect(() => {
+    const move = (e) => {
+      if (!ref.current) return;
+      ref.current.style.left = e.clientX + 'px';
+      ref.current.style.top  = e.clientY + 'px';
+    };
+    window.addEventListener('mousemove', move, { passive: true });
+    return () => window.removeEventListener('mousemove', move);
+  }, []);
+  return <div ref={ref} className={s.cglow} />;
+}
 
-export default function Home() {
-  const [file, setFile]               = useState(null);
-  const [preview, setPreview]         = useState(null);
-  const [dragging, setDragging]       = useState(false);
-  const [loading, setLoading]         = useState(false);
-  const [result, setResult]           = useState(null);
-  const [error, setError]             = useState(null);
-  const [showHeatmap, setShowHeatmap] = useState(false);
-  const [ringReady, setRingReady]     = useState(false);
-  const inputRef = useRef(null);
+/* ── Silk canvas ─────────────────────────────────────────── */
+function SilkCanvas() {
+  const canvasRef = useRef(null);
+  const rafRef    = useRef(null);
 
-  const handleFile = useCallback((f) => {
-    if (!f) return;
-    if (!['image/jpeg', 'image/jpg', 'image/png'].includes(f.type)) {
-      setError('Please upload a JPEG or PNG image.');
-      return;
-    }
-    setFile(f);
-    setResult(null);
-    setError(null);
-    setShowHeatmap(false);
-    const reader = new FileReader();
-    reader.onload = (e) => setPreview(e.target.result);
-    reader.readAsDataURL(f);
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    let time = 0;
+
+    const resize = () => {
+      canvas.width  = window.innerWidth;
+      canvas.height = window.innerHeight;
+    };
+    resize();
+    window.addEventListener('resize', resize);
+
+    const noise = (x, y) => {
+      const G = 2.71828;
+      return ((G * Math.sin(G * x)) * (G * Math.sin(G * y)) * (1 + x)) % 1;
+    };
+
+    const animate = () => {
+      const { width, height } = canvas;
+      const img = ctx.createImageData(width, height);
+      const d   = img.data;
+      const t   = time * 0.018;
+
+      for (let x = 0; x < width; x += 2) {
+        for (let y = 0; y < height; y += 2) {
+          const u   = (x / width)  * 2.2;
+          const v   = (y / height) * 2.2;
+          const ty_ = v + 0.028 * Math.sin(7.0 * u - t);
+          const pat = 0.5 + 0.5 * Math.sin(
+            4.5 * (u + ty_ + Math.cos(2.8 * u + 4.5 * ty_) + 0.02 * t) +
+            Math.sin(18 * (u + ty_ - 0.08 * t))
+          );
+          const rnd       = noise(x * 0.03, y * 0.03);
+          const intensity = Math.max(0, pat - rnd / 18);
+          const idx       = (y * width + x) * 4;
+          if (idx < d.length - 4) {
+            d[idx]   = Math.floor(55  * intensity + 8);
+            d[idx+1] = Math.floor(30  * intensity + 4);
+            d[idx+2] = Math.floor(170 * intensity + 20);
+            d[idx+3] = 255;
+            if (idx + 4 < d.length) {
+              d[idx+4] = d[idx]; d[idx+5] = d[idx+1];
+              d[idx+6] = d[idx+2]; d[idx+7] = 255;
+            }
+          }
+        }
+      }
+      ctx.putImageData(img, 0, 0);
+
+      const ov = ctx.createRadialGradient(
+        width/2, height/2, 0,
+        width/2, height/2, Math.max(width, height) * 0.6
+      );
+      ov.addColorStop(0, 'rgba(5,5,16,0.1)');
+      ov.addColorStop(1, 'rgba(5,5,16,0.72)');
+      ctx.fillStyle = ov;
+      ctx.fillRect(0, 0, width, height);
+
+      time++;
+      rafRef.current = requestAnimationFrame(animate);
+    };
+
+    animate();
+    return () => {
+      window.removeEventListener('resize', resize);
+      cancelAnimationFrame(rafRef.current);
+    };
   }, []);
 
-  const onDrop = useCallback((e) => {
-    e.preventDefault();
-    setDragging(false);
-    handleFile(e.dataTransfer.files[0]);
-  }, [handleFile]);
+  return <canvas ref={canvasRef} className={s.silkCanvas} />;
+}
 
-  const handleSubmit = async () => {
-    if (!file) return;
-    setLoading(true);
-    setError(null);
-    const form = new FormData();
-    form.append('file', file);
-    try {
-      const res = await fetch(API_URL, { method: 'POST', body: form });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.detail || `Server error ${res.status}`);
+/* ── Animated counter ────────────────────────────────────── */
+function AnimCounter({ target, suffix = '', duration = 1600 }) {
+  const [val, setVal]       = useState(0);
+  const ref                 = useRef(null);
+  const started             = useRef(false);
+
+  useEffect(() => {
+    const obs = new IntersectionObserver(([e]) => {
+      if (e.isIntersecting && !started.current) {
+        started.current = true;
+        const start = performance.now();
+        const tick  = (now) => {
+          const p    = Math.min((now - start) / duration, 1);
+          const ease = 1 - Math.pow(1 - p, 3);
+          setVal(Math.round(ease * target));
+          if (p < 1) requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
       }
-      setResult(await res.json());
-    } catch (err) {
-      setError(err.message || 'Could not reach the analysis server.');
-    } finally {
-      setLoading(false);
-    }
-  };
+    }, { threshold: 0.5 });
+    if (ref.current) obs.observe(ref.current);
+    return () => obs.disconnect();
+  }, [target, duration]);
 
-  // Trigger ring fill animation after result renders
+  return <span ref={ref}>{val}{suffix}</span>;
+}
+
+/* ── Tilt card ───────────────────────────────────────────── */
+function TiltCard({ children, className = '', style, intensity = 9 }) {
+  const ref = useRef(null);
+  const raf = useRef(null);
+  const [tilt, setTilt] = useState({ rx: 0, ry: 0, gx: 50, gy: 50, gop: 0 });
+  const [entered, setEntered] = useState(false);
+
+  useEffect(() => {
+    const obs = new IntersectionObserver(([e]) => {
+      if (e.isIntersecting) setEntered(true);
+    }, { threshold: 0.15 });
+    if (ref.current) obs.observe(ref.current);
+    return () => obs.disconnect();
+  }, []);
+
+  const onMove = useCallback((e) => {
+    if (!ref.current) return;
+    const r = ref.current.getBoundingClientRect();
+    const x = (e.clientX - r.left)  / r.width;
+    const y = (e.clientY - r.top)   / r.height;
+    cancelAnimationFrame(raf.current);
+    raf.current = requestAnimationFrame(() =>
+      setTilt({ rx: -(y - 0.5) * intensity, ry: (x - 0.5) * intensity, gx: x * 100, gy: y * 100, gop: 0.13 })
+    );
+  }, [intensity]);
+
+  const onLeave = useCallback(() => {
+    cancelAnimationFrame(raf.current);
+    raf.current = requestAnimationFrame(() =>
+      setTilt({ rx: 0, ry: 0, gx: 50, gy: 50, gop: 0 })
+    );
+  }, []);
+
+  const isResting = tilt.rx === 0 && tilt.ry === 0;
+
+  return (
+    <div
+      ref={ref}
+      className={`${s.tc} ${entered ? s.tcEntered : ''} ${className}`}
+      style={{
+        ...style,
+        transform: entered
+          ? `perspective(960px) rotateX(${tilt.rx}deg) rotateY(${tilt.ry}deg)`
+          : undefined,
+        transition: isResting
+          ? 'opacity 0.75s cubic-bezier(0.22,1,0.36,1), transform 0.6s cubic-bezier(0.22,1,0.36,1), border-color 0.3s'
+          : 'transform 0.08s ease, border-color 0.3s',
+      }}
+      onMouseMove={onMove}
+      onMouseLeave={onLeave}
+    >
+      <div
+        className={s.tcGlare}
+        style={{ background: `radial-gradient(circle at ${tilt.gx}% ${tilt.gy}%, rgba(255,255,255,${tilt.gop}), transparent 62%)` }}
+      />
+      <div className={s.tcInner}>{children}</div>
+    </div>
+  );
+}
+
+/* ── Radial accuracy ring ────────────────────────────────── */
+function Radial() {
+  const circ = 2 * Math.PI * 46;
+  const ref  = useRef(null);
+
+  useEffect(() => {
+    const obs = new IntersectionObserver(([e]) => {
+      if (e.isIntersecting && ref.current) {
+        ref.current.style.strokeDashoffset = String(circ * (1 - 0.942));
+      }
+    }, { threshold: 0.4 });
+    if (ref.current) obs.observe(ref.current.closest('.' + s.tc) || ref.current);
+    return () => obs.disconnect();
+  }, [circ]);
+
+  return (
+    <div className={s.radwrap}>
+      <svg width="110" height="110" viewBox="0 0 110 110">
+        <defs>
+          <linearGradient id="rg" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%"   stopColor="oklch(0.62 0.26 298)" />
+            <stop offset="100%" stopColor="oklch(0.74 0.28 318)" />
+          </linearGradient>
+        </defs>
+        <circle cx="55" cy="55" r="46" fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="5" />
+        <circle
+          ref={ref}
+          cx="55" cy="55" r="46" fill="none"
+          stroke="url(#rg)" strokeWidth="5"
+          strokeLinecap="round"
+          strokeDasharray={circ}
+          strokeDashoffset={circ}
+          transform="rotate(-90 55 55)"
+          style={{ transition: 'stroke-dashoffset 1.8s cubic-bezier(0.22,1,0.36,1) 0.3s' }}
+        />
+        <text x="55" y="50" textAnchor="middle" dominantBaseline="middle"
+          style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: '18px', fill: 'white', fontWeight: 400 }}>
+          94.2%
+        </text>
+        <text x="55" y="66" textAnchor="middle" dominantBaseline="middle"
+          style={{ fontFamily: 'var(--font-sans, system-ui)', fontSize: '8px', fill: 'rgba(255,255,255,0.35)', letterSpacing: '0.14em', textTransform: 'uppercase' }}>
+          accuracy
+        </text>
+      </svg>
+    </div>
+  );
+}
+
+/* ── Bento grid ──────────────────────────────────────────── */
+function Bento({ onScan }) {
+  return (
+    <div className={s.bento}>
+
+      {/* Hero card */}
+      <TiltCard className={s.bHero} intensity={5}>
+        <div style={{ position: 'absolute', right: 0, top: 0, width: '46%', height: '100%', overflow: 'hidden', borderRadius: '0 var(--rl) var(--rl) 0', zIndex: 0 }}>
+          <img src="/wave-bg.avif" alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.28, animation: 'wdrift 22s ease-in-out infinite alternate' }} />
+          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to right, var(--bg) 0%, rgba(5,5,16,0) 100%)' }} />
+        </div>
+        <div className={s.bp} style={{ position: 'relative', zIndex: 1, width: '58%' }}>
+          <div className={s.bk}>AI Dermatology</div>
+          <div className={s.bt} style={{ fontSize: 'clamp(22px,2.2vw,30px)', flex: 1, lineHeight: 1.2 }}>
+            Early detection<br />changes <em className={s.btEm}>everything.</em>
+          </div>
+          <div className={s.bb2} style={{ marginBottom: 20, fontSize: 11 }}>
+            Melanoma caught in stage I: 98% survival. Stage IV: 23%. Our model closes that gap.
+          </div>
+          <button className={s.btnPSm} onClick={onScan}>Scan a mole now</button>
+        </div>
+      </TiltCard>
+
+      {/* Accuracy */}
+      <TiltCard className={s.bAcc} intensity={7}>
+        <div className={s.bp} style={{ flexDirection: 'row', gap: 20, alignItems: 'center' }}>
+          <div style={{ flexShrink: 0 }}>
+            <div className={s.bk} style={{ marginBottom: 8 }}>Accuracy</div>
+            <Radial />
+            <div className={s.bsub} style={{ textAlign: 'center' }}>ISIC 2020</div>
+          </div>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 0, justifyContent: 'center' }}>
+            <div className={s.bk} style={{ marginBottom: 14 }}>Val AUC 0.9869</div>
+            {[
+              { l: 'Melanoma', v: 96, c: 'var(--accent-hi)' },
+              { l: 'BCC',      v: 93, c: 'var(--accent)'    },
+              { l: 'SCC',      v: 91, c: 'oklch(0.5 0.22 280)' },
+            ].map(m => (
+              <div className={s.mrow} key={m.l} style={{ marginBottom: 10 }}>
+                <div className={s.mlb}>{m.l}</div>
+                <div className={s.mtrk}><div className={s.mfil} style={{ width: `${m.v}%`, background: m.c }} /></div>
+                <div className={s.mval}>{m.v}%</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </TiltCard>
+
+      {/* ABCDE */}
+      <TiltCard className={s.bAbcde} intensity={9}>
+        <div className={s.bp}>
+          <div className={s.bk}>Diagnostic Criteria</div>
+          <div style={{ fontFamily: 'var(--font-serif, Georgia, serif)', fontSize: 15, fontWeight: 300, color: 'var(--t2)', marginBottom: 16 }}>ABCDE analysis</div>
+          <ul className={s.abcde}>
+            {[
+              ['A', 'Asymmetry — shape irregularity'],
+              ['B', 'Border — edge definition'],
+              ['C', 'Color — pigmentation variation'],
+              ['D', 'Diameter — size mapping'],
+              ['E', 'Evolution — pattern tracking'],
+            ].map(([tag, label]) => (
+              <li key={tag}><span className={s.atag}>{tag}</span>{label}</li>
+            ))}
+          </ul>
+        </div>
+      </TiltCard>
+
+      {/* Speed */}
+      <TiltCard className={s.bSpd} intensity={9}>
+        <div className={s.bp} style={{ justifyContent: 'space-between' }}>
+          <div className={s.bk}>Analysis Speed</div>
+          <div>
+            <div className={s.bnum}>&lt;<AnimCounter target={10} suffix="s" /></div>
+            <div className={s.bsub}>per scan</div>
+          </div>
+          <div className={s.bb2}>Real-time inference. No referrals, no waiting rooms.</div>
+        </div>
+      </TiltCard>
+
+      {/* Privacy */}
+      <TiltCard className={s.bPriv} intensity={11}>
+        <div className={s.bp}>
+          <div className={s.bk}>Privacy</div>
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
+              <path d="M18 3L31 9L31 20C31 27 18 33 18 33C18 33 5 27 5 20L5 9Z" stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
+              <path d="M12 18L16 22L24 14" stroke="var(--accent-hi)" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </div>
+          <div className={s.bb2} style={{ fontSize: 11 }}>Images never stored. Inference is ephemeral and private.</div>
+        </div>
+      </TiltCard>
+
+      {/* CTA */}
+      <TiltCard className={s.bCta} intensity={5}>
+        <div className={s.ctaWave} />
+        <div className={s.ctaOv} />
+        <div className={s.bp} style={{ position: 'relative', zIndex: 2, justifyContent: 'space-between' }}>
+          <div className={s.bk} style={{ color: 'rgba(255,255,255,0.3)' }}>Start Now — Free</div>
+          <div className={s.bt}>
+            Upload a photo.<br />
+            <em style={{ fontStyle: 'italic', color: 'oklch(0.82 0.22 320)' }}>Know your risk</em><br />
+            in seconds.
+          </div>
+          <button className={s.btnPSm} onClick={onScan} style={{ alignSelf: 'flex-start' }}>Begin scan →</button>
+        </div>
+      </TiltCard>
+
+      {/* Steps */}
+      <TiltCard className={s.bSteps} intensity={8}>
+        <div className={s.bp}>
+          <div className={s.bk}>How It Works</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, flex: 1 }}>
+            {[
+              ['01', 'Capture',  'Clear close-up photo in good lighting'],
+              ['02', 'Analyse',  'ABCDE criteria via DenseNet-121'],
+              ['03', 'Report',   'Risk classification + recommendation'],
+            ].map(([n, h, p]) => (
+              <div className={s.sm} key={n}>
+                <div className={s.smn}>{n}</div>
+                <div className={s.smh}>{h}</div>
+                <div className={s.smp}>{p}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </TiltCard>
+
+    </div>
+  );
+}
+
+/* ── Results panel ───────────────────────────────────────── */
+function Results({ result, loading, rawResult }) {
+  const [ringReady, setRingReady] = useState(false);
+
   useEffect(() => {
     if (result) {
       const t = setTimeout(() => setRingReady(true), 80);
@@ -70,316 +377,407 @@ export default function Home() {
     setRingReady(false);
   }, [result]);
 
-  const reset = () => {
-    setFile(null);
-    setPreview(null);
-    setResult(null);
-    setError(null);
-    setShowHeatmap(false);
-    setRingReady(false);
-  };
+  if (loading) {
+    return (
+      <div className={s.rc}>
+        <div className={s.rh}>
+          <div className={s.rlb}>Analysis</div>
+          <span className={`${s.vbadge} ${s.vbS}`}>Scanning</span>
+        </div>
+        <div className={s.sloader}>
+          <div className={s.sloaderRing} />
+          <div className={s.srtxt}>Analysing dermoscopic features</div>
+        </div>
+      </div>
+    );
+  }
 
-  const isMalignant = result?.predicted_class === 'Malignant';
-  const malProb     = result?.malignant_probability ?? 0;
-  const ringOffset  = ringReady ? RING_CIRC * (1 - malProb) : RING_CIRC;
-  const ringStroke  = isMalignant ? 'var(--malignant)' : 'var(--benign)';
-
-  return (
-    <div className={s.root}>
-
-      {/* ── Nav ─────────────────────────────────────────────────── */}
-      <nav className={s.nav}>
-        <div className={s.navLeft}>
-          <div className={s.logoMark} aria-hidden>
-            <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
-              <circle cx="6.5" cy="6.5" r="5" stroke="currentColor" strokeWidth="1.2"/>
-              <circle cx="6.5" cy="6.5" r="1.6" fill="currentColor"/>
-              <line x1="6.5" y1="1"  x2="6.5" y2="3"  stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-              <line x1="6.5" y1="10" x2="6.5" y2="12" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-              <line x1="1"   y1="6.5" x2="3"   y2="6.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-              <line x1="10"  y1="6.5" x2="12"  y2="6.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+  if (!result) {
+    return (
+      <div className={s.rc}>
+        <div className={s.rh}><div className={s.rlb}>Analysis Report</div></div>
+        <div className={s.rempty}>
+          <div className={s.reicon}>
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="rgba(255,255,255,0.22)" strokeWidth="1.2">
+              <circle cx="9" cy="9" r="7" />
+              <path d="M9 6v4M9 12.5h.01" />
             </svg>
           </div>
-          <span className={s.navBrand}>DermoScan</span>
+          <div className={s.reh}>No scan yet</div>
+          <div className={s.rep}>Upload a dermoscopy image to receive your AI-powered risk report.</div>
         </div>
-        <div className={s.navRight}>
-          <span className={s.navTag}>DenseNet121</span>
-          <span className={s.navTag}>AUC&nbsp;0.9869</span>
-          <div className={s.liveChip}>
-            <span className={s.liveDot} aria-hidden />
-            <span>Live</span>
+      </div>
+    );
+  }
+
+  const cls      = result.verdict.toLowerCase();
+  const bc       = cls === 'benign' ? s.vbB : cls === 'malignant' ? s.vbM : s.vbU;
+  const tcls     = cls === 'benign' ? s.vtitleB : cls === 'malignant' ? s.vtitleM : s.vtitleU;
+  const vt       = cls === 'benign'
+    ? 'Likely Benign'
+    : cls === 'malignant'
+    ? 'High Risk — See a Dermatologist'
+    : 'Uncertain — Seek Professional Review';
+
+  const malignantPct = rawResult ? Math.round(rawResult.malignant_probability * 100) : 0;
+  const benignPct    = rawResult ? Math.round(rawResult.benign_probability    * 100) : 0;
+  const RING_R       = 46;
+  const RING_CIRC    = 2 * Math.PI * RING_R;
+  const ringOffset   = ringReady ? RING_CIRC * (1 - (rawResult?.malignant_probability ?? 0)) : RING_CIRC;
+  const ringStroke   = cls === 'malignant' ? '#ff6b6b' : '#4cd964';
+
+  return (
+    <div className={s.rc}>
+      <div className={s.rh}>
+        <div className={s.rlb}>Analysis Report</div>
+        <span className={`${s.vbadge} ${bc}`}>{result.verdict}</span>
+      </div>
+      <div className={s.rbody}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, marginBottom: 8 }}>
+          <div style={{ flex: 1 }}>
+            <div className={`${s.vtitle} ${tcls}`}>{vt}</div>
+            <div className={s.vconf}>Confidence: {result.confidence}</div>
           </div>
+          {rawResult && (
+            <svg width="96" height="96" viewBox="0 0 110 110" style={{ flexShrink: 0 }}>
+              <circle cx="55" cy="55" r={RING_R} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="5" />
+              <circle cx="55" cy="55" r={RING_R} fill="none"
+                stroke={ringStroke} strokeWidth="5"
+                strokeLinecap="round"
+                strokeDasharray={RING_CIRC}
+                strokeDashoffset={ringOffset}
+                transform="rotate(-90 55 55)"
+                style={{ transition: 'stroke-dashoffset 1.1s cubic-bezier(0.16,1,0.3,1)' }}
+              />
+              <text x="55" y="50" textAnchor="middle" dominantBaseline="middle"
+                style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: '14px', fill: 'white', fontWeight: 400 }}>
+                {malignantPct}%
+              </text>
+              <text x="55" y="66" textAnchor="middle" dominantBaseline="middle"
+                style={{ fontFamily: 'var(--font-sans, system-ui)', fontSize: '7px', fill: 'rgba(255,255,255,0.35)', letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+                malignant
+              </text>
+            </svg>
+          )}
         </div>
-      </nav>
 
-      <main className={s.main}>
+        <div className={s.rdiv} />
 
-        {/* ── Upload state ──────────────────────────────────────── */}
-        {!result && (
+        <div className={s.rsum}>{result.summary}</div>
+
+        {rawResult && (
           <>
-            <header className={s.hero}>
-              <div className={s.heroEyebrow}>AI-Assisted Dermatology</div>
-              <h1 className={s.heroTitle}>Skin Lesion Analysis</h1>
-              <p className={s.heroPara}>
-                Upload a dermoscopy image for instant malignancy screening.
-                DenseNet121 trained on ISIC data — binary classification with Grad-CAM visualisation.
-              </p>
-            </header>
-
-            <section className={s.panel} aria-label="Image upload">
-              <div className={s.panelHead}>
-                <span className={s.stepNum}>01</span>
-                <span className={s.stepLabel}>Upload Image</span>
+            <div className={s.rdiv} />
+            {[
+              { label: 'Benign',    val: benignPct,    color: '#4cd964' },
+              { label: 'Malignant', val: malignantPct, color: '#ff6b6b' },
+            ].map(m => (
+              <div className={s.mrow} key={m.label}>
+                <div className={s.mlb}>{m.label}</div>
+                <div className={s.mtrk}><div className={s.mfil} style={{ width: `${m.val}%`, background: m.color }} /></div>
+                <div className={s.mval}>{m.val}%</div>
               </div>
-
-              <div className={s.panelBody}>
-                {/* Scan animation during inference */}
-                {loading && (
-                  <div className={s.scanWrap} aria-live="polite" aria-label="Analysing image">
-                    <img src={preview} alt="" className={s.scanImg} aria-hidden />
-                    <div className={s.scanLine} aria-hidden />
-                    <div className={s.scanVignette} aria-hidden />
-                    <div className={s.scanCaption}>
-                      <span className={s.scanDot} aria-hidden />
-                      Analysing lesion…
-                    </div>
-                  </div>
-                )}
-
-                {/* Empty dropzone */}
-                {!loading && !preview && (
-                  <div
-                    className={`${s.dropzone} ${dragging ? s.dragging : ''}`}
-                    onClick={() => inputRef.current?.click()}
-                    onDrop={onDrop}
-                    onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-                    onDragLeave={() => setDragging(false)}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => e.key === 'Enter' && inputRef.current?.click()}
-                    aria-label="Upload dermoscopy image"
-                  >
-                    <input
-                      ref={inputRef}
-                      type="file"
-                      accept="image/jpeg,image/jpg,image/png"
-                      className={s.hiddenInput}
-                      onChange={(e) => handleFile(e.target.files[0])}
-                    />
-                    <div className={s.dzIcon} aria-hidden>
-                      <svg width="30" height="30" viewBox="0 0 30 30" fill="none">
-                        <rect x="2" y="6" width="26" height="20" rx="2" stroke="currentColor" strokeWidth="1.4"/>
-                        <circle cx="9.5" cy="13" r="2.5" stroke="currentColor" strokeWidth="1.4"/>
-                        <path d="M2 20.5l6.5-5.5 4.5 4 5.5-6L26 20.5" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" strokeLinecap="round"/>
-                        <path d="M15 1.5v7M12.5 4L15 1.5 17.5 4" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" strokeLinecap="round"/>
-                      </svg>
-                    </div>
-                    <p className={s.dzTitle}>Drop image here</p>
-                    <p className={s.dzSub}>or <span className={s.dzLink}>choose file</span></p>
-                    <div className={s.dzBadges} aria-label="Accepted formats">
-                      <span>JPEG</span>
-                      <span>PNG</span>
-                    </div>
-                  </div>
-                )}
-
-                {/* Image preview after selection */}
-                {!loading && preview && (
-                  <div className={s.previewBox}>
-                    <img src={preview} alt="Selected lesion image" className={s.previewImg} />
-                    <div className={s.previewMeta}>
-                      <svg width="11" height="11" viewBox="0 0 11 11" fill="none" aria-hidden>
-                        <rect x="1" y="0.5" width="9" height="10" rx="1" stroke="currentColor" strokeWidth="0.9"/>
-                        <line x1="3" y1="3.5" x2="8" y2="3.5" stroke="currentColor" strokeWidth="0.8" strokeLinecap="round"/>
-                        <line x1="3" y1="5.5" x2="8" y2="5.5" stroke="currentColor" strokeWidth="0.8" strokeLinecap="round"/>
-                        <line x1="3" y1="7.5" x2="6" y2="7.5" stroke="currentColor" strokeWidth="0.8" strokeLinecap="round"/>
-                      </svg>
-                      <span>{file?.name}</span>
-                    </div>
-                  </div>
-                )}
-
-                {error && (
-                  <div className={s.errBox} role="alert">
-                    <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden>
-                      <circle cx="6.5" cy="6.5" r="5.5" stroke="currentColor" strokeWidth="1.1"/>
-                      <line x1="6.5" y1="3.5" x2="6.5" y2="7" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
-                      <circle cx="6.5" cy="9" r="0.7" fill="currentColor"/>
-                    </svg>
-                    {error}
-                  </div>
-                )}
-
-                {preview && !loading && (
-                  <div className={s.actions}>
-                    <button className={s.btnGhost} onClick={reset}>Clear</button>
-                    <button className={s.btnPrimary} onClick={handleSubmit}>
-                      <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden>
-                        <circle cx="6.5" cy="6.5" r="5.5" stroke="currentColor" strokeWidth="1.1"/>
-                        <path d="M4 6.5L6 8.5L9.5 5" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                      Run Analysis
-                    </button>
-                  </div>
-                )}
-              </div>
-            </section>
+            ))}
           </>
         )}
 
-        {/* ── Result state ──────────────────────────────────────── */}
-        {result && (
-          <div className={s.resultGrid}>
+        <div className={s.disc}>
+          <strong>Medical Disclaimer —</strong> For informational purposes only. Always consult a board-certified dermatologist for any skin concern.
+        </div>
+      </div>
+    </div>
+  );
+}
 
-            {/* Left — image panel */}
-            <div className={s.imgPanel}>
-              <div className={s.panelHead}>
-                <span className={s.stepNum}>01</span>
-                <span className={s.stepLabel}>Input Image</span>
-                <button
-                  className={`${s.toggleBtn} ${showHeatmap ? s.toggleActive : ''}`}
-                  onClick={() => setShowHeatmap(v => !v)}
-                  aria-pressed={showHeatmap}
-                >
-                  {showHeatmap ? 'Original' : 'Grad-CAM'}
-                </button>
-              </div>
+/* ── Scan section ────────────────────────────────────────── */
+function Scan() {
+  const [img, setImg]         = useState(null);
+  const [drag, setDrag]       = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [result, setResult]   = useState(null);
+  const [rawResult, setRaw]   = useState(null);
+  const [showHeatmap, setShowHeatmap] = useState(false);
+  const fref = useRef(null);
 
-              <div className={s.imgFrame}>
-                <img
-                  src={showHeatmap ? result.heatmap_image : preview}
-                  alt={showHeatmap ? 'Grad-CAM activation heatmap' : 'Input lesion image'}
-                  className={s.frameImg}
-                />
-                <span className={`${s.corner} ${s.cTL}`} aria-hidden />
-                <span className={`${s.corner} ${s.cTR}`} aria-hidden />
-                <span className={`${s.corner} ${s.cBL}`} aria-hidden />
-                <span className={`${s.corner} ${s.cBR}`} aria-hidden />
-              </div>
+  const proc = (file) => {
+    if (!file) return;
+    if (!['image/jpeg', 'image/jpg', 'image/png'].includes(file.type)) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setImg({ url: URL.createObjectURL(file), name: file.name, file });
+      setResult(null);
+      setRaw(null);
+      setShowHeatmap(false);
+    };
+    reader.readAsDataURL(file);
+  };
 
-              <p className={s.imgCaption}>
-                {showHeatmap
-                  ? 'Activation map — highlighted regions drove the prediction'
-                  : file?.name}
-              </p>
-            </div>
+  const analyse = async () => {
+    if (!img) return;
+    setLoading(true);
+    setResult(null);
+    setRaw(null);
+    try {
+      const form = new FormData();
+      form.append('file', img.file);
+      const res  = await fetch(API_URL, { method: 'POST', body: form });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.detail || `Server error ${res.status}`);
+      }
+      const data = await res.json();
+      setRaw(data);
+      const malignantPct = Math.round(data.malignant_probability * 100);
+      const benignPct    = Math.round(data.benign_probability    * 100);
+      setResult({
+        verdict:    data.predicted_class,
+        confidence: `${Math.max(malignantPct, benignPct)}%`,
+        summary:    data.recommendation,
+      });
+    } catch (err) {
+      setResult({
+        verdict:    'Uncertain',
+        confidence: 'N/A',
+        summary:    err.message || 'Analysis failed. Please try again with a clearer image.',
+      });
+    }
+    setLoading(false);
+  };
 
-            {/* Right — analysis report */}
-            <div className={s.reportPanel}>
-              <div className={s.panelHead}>
-                <span className={s.stepNum}>02</span>
-                <span className={s.stepLabel}>Analysis Report</span>
-              </div>
+  const displaySrc = rawResult && showHeatmap ? rawResult.heatmap_image : img?.url;
 
-              {/* Verdict + confidence ring */}
-              <div className={`${s.verdict} ${isMalignant ? s.verdictMal : s.verdictBen}`}>
-                <div className={s.verdictInfo}>
-                  <div className={s.verdictSub}>Classification</div>
-                  <div className={s.verdictClass}>{result.predicted_class}</div>
-                  <div className={s.verdictThresh}>
-                    Threshold&nbsp;{(result.threshold_used * 100).toFixed(1)}%
-                  </div>
-                </div>
-                <div className={s.ringWrap}>
-                  <svg
-                    width="120" height="120" viewBox="0 0 120 120"
-                    role="img"
-                    aria-label={`Malignant probability ${(malProb * 100).toFixed(1)} percent`}
+  return (
+    <section id="scan" className={s.scanSection} data-section-label="03 Scan">
+      <input ref={fref} type="file" accept="image/jpeg,image/jpg,image/png"
+        style={{ display: 'none' }} onChange={e => proc(e.target.files[0])} />
+
+      <span className={s.sKicker}>AI Scanner</span>
+      <h2 className={s.sTitle}>Upload &amp; <em className={s.sTitleEm}>Analyse</em></h2>
+      <p className={s.sSub}>A clear, close-up photo in good lighting gives the most accurate result. No account needed.</p>
+
+      <div className={s.scanGrid}>
+        {/* Left: upload */}
+        <div>
+          <span className={s.ulabel}>Image Upload</span>
+          <div
+            className={`${s.uzone} ${drag ? s.uzoneDov : ''} ${img ? s.uzoneHim : ''}`}
+            onClick={() => !img && fref.current?.click()}
+            onDrop={e => { e.preventDefault(); setDrag(false); proc(e.dataTransfer.files[0]); }}
+            onDragOver={e => { e.preventDefault(); setDrag(true); }}
+            onDragLeave={() => setDrag(false)}
+          >
+            {img ? (
+              <>
+                <img src={displaySrc} alt="Preview" className={s.pimg} />
+                {rawResult && (
+                  <button
+                    className={s.heatmapToggle}
+                    onClick={e => { e.stopPropagation(); setShowHeatmap(v => !v); }}
                   >
-                    <circle cx="60" cy="60" r={RING_R} fill="none"
-                      stroke="currentColor" strokeWidth="7" opacity="0.1" />
-                    <circle cx="60" cy="60" r={RING_R} fill="none"
-                      stroke={ringStroke} strokeWidth="7"
-                      strokeDasharray={RING_CIRC}
-                      strokeDashoffset={ringOffset}
-                      strokeLinecap="round"
-                      transform="rotate(-90 60 60)"
-                      style={{ transition: 'stroke-dashoffset 1.1s cubic-bezier(0.16, 1, 0.3, 1)' }}
-                    />
-                    <text x="60" y="54" textAnchor="middle" dominantBaseline="middle"
-                      style={{ fontSize: '17px', fontWeight: '600', fontFamily: 'var(--font-sans)', fill: 'var(--text)' }}>
-                      {(malProb * 100).toFixed(1)}%
-                    </text>
-                    <text x="60" y="71" textAnchor="middle" dominantBaseline="middle"
-                      style={{ fontSize: '7.5px', fontWeight: '500', letterSpacing: '0.1em', fontFamily: 'var(--font-mono)', fill: 'var(--text-muted)' }}>
-                      MALIGNANT
-                    </text>
+                    {showHeatmap ? 'Original' : 'Grad-CAM'}
+                  </button>
+                )}
+                <div className={s.pbar}>
+                  <span className={s.pname}>{img.name}</span>
+                  <button className={s.prem}
+                    onClick={e => { e.stopPropagation(); setImg(null); setResult(null); setRaw(null); setShowHeatmap(false); }}>
+                    Remove ×
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className={s.uiconring}>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2">
+                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+                    <polyline points="17 8 12 3 7 8" />
+                    <line x1="12" y1="3" x2="12" y2="15" />
                   </svg>
                 </div>
-              </div>
-
-              {/* Probability bars */}
-              <div className={s.barsWrap}>
-                <div className={s.barsTitle}>Confidence Breakdown</div>
-                {[
-                  { label: 'Benign',    value: result.benign_probability,    cls: s.barBen },
-                  { label: 'Malignant', value: result.malignant_probability, cls: s.barMal },
-                ].map(({ label, value, cls }) => (
-                  <div key={label} className={s.barRow}>
-                    <div className={s.barMeta}>
-                      <span className={s.barLabel}>{label}</span>
-                      <span className={s.barPct}>{(value * 100).toFixed(1)}%</span>
-                    </div>
-                    <div className={s.barTrack}>
-                      <div className={`${s.barFill} ${cls}`} style={{ '--w': `${value * 100}%` }} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Model provenance */}
-              <div className={s.modelMeta}>
-                <span>DenseNet121</span>
-                <span className={s.mdot}>·</span>
-                <span>Epoch 13</span>
-                <span className={s.mdot}>·</span>
-                <span>Val AUC 0.9869</span>
-                <span className={s.mdot}>·</span>
-                <span>T&nbsp;=&nbsp;{(result.threshold_used * 100).toFixed(1)}%</span>
-              </div>
-
-              {/* Recommendation */}
-              <div className={`${s.rec} ${isMalignant ? s.recMal : s.recBen}`}>
-                <div className={s.recIcon} aria-hidden>
-                  {isMalignant ? (
-                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                      <path d="M7 1.5L13.5 13H0.5L7 1.5Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
-                      <line x1="7" y1="6" x2="7" y2="9.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-                      <circle cx="7" cy="11.2" r="0.7" fill="currentColor"/>
-                    </svg>
-                  ) : (
-                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                      <circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth="1.2"/>
-                      <path d="M4.5 7L6.5 9L9.5 5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                  )}
+                <div className={s.uh}>Drop image here</div>
+                <div className={s.us}>or click to browse</div>
+                <div className={s.utags}>
+                  {['JPG', 'PNG', 'JPEG'].map(f => <span key={f} className={s.utag}>{f}</span>)}
                 </div>
-                <p className={s.recText}>{result.recommendation}</p>
-              </div>
-
-              <p className={s.disclaimer}>
-                For informational purposes only — not a substitute for professional clinical
-                evaluation. Always consult a qualified dermatologist.
-              </p>
-
-              <button className={s.btnPrimaryFull} onClick={reset}>
-                New Analysis
-              </button>
-            </div>
-
+              </>
+            )}
           </div>
-        )}
+          <button className={s.sbtn} disabled={!img || loading} onClick={analyse}>
+            {loading ? <><div className={s.sring} /> Analysing…</> : 'Run AI Analysis'}
+          </button>
+        </div>
 
-      </main>
+        {/* Right: results */}
+        <Results result={result} loading={loading} rawResult={rawResult} />
+      </div>
+    </section>
+  );
+}
 
+/* ── Hero ────────────────────────────────────────────────── */
+function Hero({ onScan }) {
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setLoaded(true), 120);
+    return () => clearTimeout(t);
+  }, []);
+
+  const bi = (delay) => ({
+    opacity:   loaded ? 1 : 0,
+    filter:    loaded ? 'blur(0)' : 'blur(14px)',
+    transform: loaded ? 'none' : 'translateY(20px)',
+    transition: `opacity 1s ${delay}s cubic-bezier(0.22,1,0.36,1), filter 1s ${delay}s cubic-bezier(0.22,1,0.36,1), transform 1s ${delay}s cubic-bezier(0.22,1,0.36,1)`,
+  });
+
+  const stats = [
+    { v: '94.2%',   l: 'Detection accuracy'   },
+    { v: '< 10s',   l: 'Average scan time'     },
+    { v: '33k+',    l: 'Training images'        },
+    { v: 'Val AUC 0.9869', l: 'Best checkpoint' },
+  ];
+
+  return (
+    <section id="hero" className={s.hero} data-section-label="01 Hero">
+      <SilkCanvas />
+      <div className={s.heroWave} />
+      <div className={s.heroVignette} />
+
+      {/* Ghost watermark */}
+      <div className={s.heroGhost} style={{
+        opacity:    loaded ? 1 : 0,
+        transition: 'opacity 1.4s 1s ease',
+      }}>
+        DERMO
+      </div>
+
+      {/* Thin vertical accent rule */}
+      <div className={s.vertRule} style={{ opacity: loaded ? 0.25 : 0 }} />
+
+      <div className={s.heroContent}>
+        <div style={bi(0.1)}>
+          <div className={s.heroKicker}>
+            <span className={s.kickerDot} />
+            AI Dermatology · Clinical Grade
+          </div>
+        </div>
+        <h1 className={s.heroh1} style={bi(0.28)}>
+          Skin clarity,<br /><em className={s.heroh1Em}>instantly.</em>
+        </h1>
+        <p className={s.heroSub} style={bi(0.46)}>
+          Upload a photo of your mole or lesion. Our AI delivers a clinically-informed risk
+          assessment — in seconds, not weeks.
+        </p>
+        <div className={s.heroActions} style={bi(0.62)}>
+          <button className={s.btnP} onClick={onScan}>Begin free scan</button>
+          <button className={s.btnG}
+            onClick={() => document.getElementById('bento')?.scrollIntoView({ behavior: 'smooth' })}>
+            How it works
+          </button>
+        </div>
+      </div>
+
+      {/* Stat strip */}
+      <div className={s.heroStatStrip} style={{
+        opacity:    loaded ? 1 : 0,
+        transform:  loaded ? 'none' : 'translateY(12px)',
+        transition: 'opacity 0.9s 1.0s cubic-bezier(0.22,1,0.36,1), transform 0.9s 1.0s cubic-bezier(0.22,1,0.36,1)',
+      }}>
+        {stats.map(stat => (
+          <div className={s.hstat} key={stat.l}>
+            <div className={s.hstatV}>{stat.v}</div>
+            <div className={s.hstatL}>{stat.l}</div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/* ── Root app ────────────────────────────────────────────── */
+export default function Home() {
+  const [sec, setSec]  = useState(0);
+  const ids            = ['hero', 'bento', 'scan'];
+
+  useEffect(() => {
+    const obs = new IntersectionObserver((entries) => {
+      entries.forEach(e => {
+        if (e.isIntersecting) {
+          const i = ids.indexOf(e.target.id);
+          if (i >= 0) setSec(i);
+        }
+      });
+    }, { threshold: 0.35 });
+    ids.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) obs.observe(el);
+    });
+    return () => obs.disconnect();
+  }, []);
+
+  const goScan = () => document.getElementById('scan')?.scrollIntoView({ behavior: 'smooth' });
+  const goTo   = (i) => document.getElementById(ids[i])?.scrollIntoView({ behavior: 'smooth' });
+
+  const bars = [
+    { num: '01', label: 'Detect ',  hi: 'Melanoma', rest: ' Early',   desc: 'AI mole analysis, clinical grade.'      },
+    { num: '02', label: 'How the ', hi: 'AI',        rest: ' works',  desc: 'ABCDE criteria applied in seconds.'     },
+    { num: '03', label: 'Upload & ', hi: 'Analyse',  rest: '',        desc: 'Risk classification in under 10s.'      },
+  ];
+  const b = bars[sec] || bars[0];
+
+  return (
+    <>
+      <CursorGlow />
+
+      {/* Nav */}
+      <nav className={s.nav}>
+        <div className={s.logo}>Dermo<em className={s.logoEm}>Scan</em></div>
+        <ul className={s.navLinks}>
+          <li className={`${s.navLink} ${sec === 0 ? s.navLinkAct : ''}`} onClick={() => goTo(0)}>Home</li>
+          <li className={`${s.navLink} ${sec === 1 ? s.navLinkAct : ''}`} onClick={() => goTo(1)}>Platform</li>
+          <li className={`${s.navLink} ${sec === 2 ? s.navLinkAct : ''}`} onClick={() => goTo(2)}>Scan</li>
+        </ul>
+        <div className={s.navRight}>
+          <button className={s.npill}>Research</button>
+          <button className={s.ncta} onClick={goScan}>Scan Now</button>
+        </div>
+      </nav>
+
+      {/* Dot nav */}
+      <div className={s.dnav}>
+        {ids.map((_, i) => (
+          <div key={i} className={`${s.dn} ${sec === i ? s.dnAct : ''}`} onClick={() => goTo(i)} />
+        ))}
+      </div>
+
+      {/* Hero */}
+      <Hero onScan={goScan} />
+
+      {/* Bento */}
+      <section id="bento" className={s.sectionWrap} style={{ paddingTop: 52 }} data-section-label="02 Platform">
+        <Bento onScan={goScan} />
+      </section>
+
+      {/* Scan */}
+      <Scan />
+
+      {/* Footer */}
       <footer className={s.footer}>
-        <span>DermoScan</span>
-        <span className={s.ftDot}>·</span>
-        <span>DenseNet121 Binary Classifier</span>
-        <span className={s.ftDot}>·</span>
-        <span>For Research Use Only</span>
+        <div className={s.fl}>Dermo<em className={s.flEm}>Scan</em></div>
+        <div className={s.fc}>For informational purposes only · Not medical advice · © 2026</div>
       </footer>
 
-    </div>
+      {/* Bottom bar */}
+      <div className={s.bbar}>
+        <div className={s.bbn}>{b.num}</div>
+        <div className={s.bbl}>{b.label}<em className={s.bblEm}>{b.hi}</em>{b.rest}</div>
+        <div className={s.bbpills}>
+          {ids.map((_, i) => (
+            <div key={i} className={`${s.bbp} ${sec === i ? s.bbpAct : ''}`} />
+          ))}
+        </div>
+        <button className={s.bbact} onClick={goScan}>Scan now ↗</button>
+        <div className={s.bbdesc}>{b.desc}</div>
+      </div>
+    </>
   );
 }
