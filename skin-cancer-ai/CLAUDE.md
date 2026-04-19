@@ -41,15 +41,20 @@ skin-cancer-ai/
 ```bash
 source venv/bin/activate
 uvicorn api:app --host 0.0.0.0 --port 8000
-# CORS enabled for localhost:3000
+# CORS enabled for localhost:3000, localhost:3001, 172.24.76.36:3000/3001
 ```
 
 ### Frontend
 ```bash
 cd frontend
 npm install
-npm run dev         # http://localhost:3000
+npm run dev         # http://localhost:3000 (falls back to :3001 if in use)
 ```
+
+### WSL access
+- WSL IP: `172.24.76.36`
+- Frontend: `http://172.24.76.36:3001` (or :3000)
+- API: `http://172.24.76.36:8000`
 
 ### Training (Kaggle)
 Upload `train_v4.ipynb` to Kaggle with dataset at `/kaggle/working/isic_data/`.
@@ -66,4 +71,8 @@ Best model saves to `/kaggle/working/best_model.pth`.
 
 - `compute_macro_auc` uses `roc_auc_score(labels, probs[:, 1])` — binary form, not multiclass.
 - Scheduler: `ReduceLROnPlateau` in Phase 1, `CosineAnnealingLR` in Phase 2. `run_phase` checks type before calling `.step()`.
-- CORS middleware in `api.py` allows requests from `localhost:3000`.
+- CORS middleware in `api.py` allows requests from localhost:3000/3001 and WSL IP :3000/3001.
+- Frontend fonts: Josefin Sans (display/`--font-serif`), Figtree (body/`--font-sans`), Fira Mono (mono/`--font-mono`).
+- Light/dark mode toggle in nav; preference persisted to `localStorage` via `data-theme` attribute on `<html>`.
+- CSS module keyframes (`@keyframes spin` etc.) must be defined locally in `page.module.css` — Next.js CSS Modules scope keyframe names so globals.css keyframes are not resolved by module files.
+- `train_final.ipynb` — final clean training notebook.
