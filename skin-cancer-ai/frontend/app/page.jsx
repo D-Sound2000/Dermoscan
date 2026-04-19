@@ -5,7 +5,46 @@ import s from './page.module.css';
 
 const API_URL = 'http://172.24.76.36:8000/predict-with-heatmap';
 
-/* ── Cursor glow ─────────────────────────────────────────── */
+/* ── Theme ───────────────────────────────────────────────────── */
+function useDarkMode() {
+  const [isDark, setIsDark] = useState(true);
+
+  useEffect(() => {
+    const stored = localStorage.getItem('dermoscan-theme');
+    const dark = stored !== 'light';
+    setIsDark(dark);
+    document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+  }, []);
+
+  const toggle = useCallback(() => {
+    setIsDark(d => {
+      const next = !d;
+      localStorage.setItem('dermoscan-theme', next ? 'dark' : 'light');
+      document.documentElement.setAttribute('data-theme', next ? 'dark' : 'light');
+      return next;
+    });
+  }, []);
+
+  return [isDark, toggle];
+}
+
+/* ── Parallax ────────────────────────────────────────────────── */
+function useScrollParallax() {
+  useEffect(() => {
+    let ticking = false;
+    const update = () => {
+      document.documentElement.style.setProperty('--py', `${window.scrollY}px`);
+      ticking = false;
+    };
+    const onScroll = () => {
+      if (!ticking) { requestAnimationFrame(update); ticking = true; }
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+}
+
+/* ── Cursor glow ─────────────────────────────────────────────── */
 function CursorGlow() {
   const ref = useRef(null);
   useEffect(() => {
@@ -20,7 +59,7 @@ function CursorGlow() {
   return <div ref={ref} className={s.cglow} />;
 }
 
-/* ── Silk canvas ─────────────────────────────────────────── */
+/* ── Silk canvas ─────────────────────────────────────────────── */
 function SilkCanvas() {
   const canvasRef = useRef(null);
   const rafRef    = useRef(null);
@@ -98,11 +137,41 @@ function SilkCanvas() {
   return <canvas ref={canvasRef} className={s.silkCanvas} />;
 }
 
-/* ── Animated counter ────────────────────────────────────── */
+/* ── Theme toggle ────────────────────────────────────────────── */
+function ThemeToggle({ isDark, onToggle }) {
+  return (
+    <button
+      className={s.themeToggle}
+      onClick={onToggle}
+      aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+      title={isDark ? 'Light mode' : 'Dark mode'}
+    >
+      {isDark ? (
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+          <circle cx="12" cy="12" r="5" />
+          <line x1="12" y1="1" x2="12" y2="3" />
+          <line x1="12" y1="21" x2="12" y2="23" />
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+          <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+          <line x1="1" y1="12" x2="3" y2="12" />
+          <line x1="21" y1="12" x2="23" y2="12" />
+          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+          <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+        </svg>
+      ) : (
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+        </svg>
+      )}
+    </button>
+  );
+}
+
+/* ── Animated counter ────────────────────────────────────────── */
 function AnimCounter({ target, suffix = '', duration = 1600 }) {
-  const [val, setVal]       = useState(0);
-  const ref                 = useRef(null);
-  const started             = useRef(false);
+  const [val, setVal]   = useState(0);
+  const ref             = useRef(null);
+  const started         = useRef(false);
 
   useEffect(() => {
     const obs = new IntersectionObserver(([e]) => {
@@ -125,7 +194,7 @@ function AnimCounter({ target, suffix = '', duration = 1600 }) {
   return <span ref={ref}>{val}{suffix}</span>;
 }
 
-/* ── Tilt card ───────────────────────────────────────────── */
+/* ── Tilt card ───────────────────────────────────────────────── */
 function TiltCard({ children, className = '', style, intensity = 9 }) {
   const ref = useRef(null);
   const raf = useRef(null);
@@ -185,7 +254,7 @@ function TiltCard({ children, className = '', style, intensity = 9 }) {
   );
 }
 
-/* ── Radial accuracy ring ────────────────────────────────── */
+/* ── Radial accuracy ring ────────────────────────────────────── */
 function Radial() {
   const circ = 2 * Math.PI * 46;
   const ref  = useRef(null);
@@ -221,11 +290,11 @@ function Radial() {
           style={{ transition: 'stroke-dashoffset 1.8s cubic-bezier(0.22,1,0.36,1) 0.3s' }}
         />
         <text x="55" y="50" textAnchor="middle" dominantBaseline="middle"
-          style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: '18px', fill: 'white', fontWeight: 400 }}>
+          style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: '18px', fill: 'currentColor', fontWeight: 400 }}>
           94.2%
         </text>
         <text x="55" y="66" textAnchor="middle" dominantBaseline="middle"
-          style={{ fontFamily: 'var(--font-sans, system-ui)', fontSize: '8px', fill: 'rgba(255,255,255,0.35)', letterSpacing: '0.14em', textTransform: 'uppercase' }}>
+          style={{ fontFamily: 'var(--font-sans, system-ui)', fontSize: '8px', fill: 'var(--t3)', letterSpacing: '0.14em', textTransform: 'uppercase' }}>
           accuracy
         </text>
       </svg>
@@ -233,7 +302,38 @@ function Radial() {
   );
 }
 
-/* ── Bento grid ──────────────────────────────────────────── */
+/* ── Premium scan loader ─────────────────────────────────────── */
+function ScanLoader() {
+  const [step, setStep] = useState(0);
+  const steps = [
+    'Preprocessing image',
+    'Extracting dermoscopic features',
+    'Running DenseNet-121 inference',
+    'Applying Grad-CAM attribution',
+    'Calibrating confidence score',
+  ];
+
+  useEffect(() => {
+    const t = setInterval(() => setStep(n => (n + 1) % steps.length), 1900);
+    return () => clearInterval(t);
+  }, []);
+
+  return (
+    <div className={s.sloader}>
+      <div className={s.scanRingWrap}>
+        <div className={s.scanRingOuter} />
+        <div className={s.scanRingMid} />
+        <div className={s.scanRingInner} />
+        <div className={s.scanCenter}>
+          <div className={s.scanCenterDot} />
+        </div>
+      </div>
+      <div key={step} className={s.scanStepText}>{steps[step]}</div>
+    </div>
+  );
+}
+
+/* ── Bento grid ──────────────────────────────────────────────── */
 function Bento({ onScan }) {
   return (
     <div className={s.bento}>
@@ -318,7 +418,7 @@ function Bento({ onScan }) {
           <div className={s.bk}>Privacy</div>
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
-              <path d="M18 3L31 9L31 20C31 27 18 33 18 33C18 33 5 27 5 20L5 9Z" stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
+              <path d="M18 3L31 9L31 20C31 27 18 33 18 33C18 33 5 27 5 20L5 9Z" stroke="var(--border-hi)" strokeWidth="1" />
               <path d="M12 18L16 22L24 14" stroke="var(--accent-hi)" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </div>
@@ -331,10 +431,10 @@ function Bento({ onScan }) {
         <div className={s.ctaWave} />
         <div className={s.ctaOv} />
         <div className={s.bp} style={{ position: 'relative', zIndex: 2, justifyContent: 'space-between' }}>
-          <div className={s.bk} style={{ color: 'rgba(255,255,255,0.3)' }}>Start Now — Free</div>
+          <div className={s.bk} style={{ color: 'var(--t3)' }}>Start Now — Free</div>
           <div className={s.bt}>
             Upload a photo.<br />
-            <em style={{ fontStyle: 'italic', color: 'oklch(0.82 0.22 320)' }}>Know your risk</em><br />
+            <em style={{ fontStyle: 'italic', color: 'var(--accent-hi)' }}>Know your risk</em><br />
             in seconds.
           </div>
           <button className={s.btnPSm} onClick={onScan} style={{ alignSelf: 'flex-start' }}>Begin scan →</button>
@@ -365,8 +465,8 @@ function Bento({ onScan }) {
   );
 }
 
-/* ── Results panel ───────────────────────────────────────── */
-function Results({ result, loading, rawResult }) {
+/* ── Results panel ───────────────────────────────────────────── */
+function Results({ result, loading, rawResult, onReset }) {
   const [ringReady, setRingReady] = useState(false);
 
   useEffect(() => {
@@ -384,10 +484,7 @@ function Results({ result, loading, rawResult }) {
           <div className={s.rlb}>Analysis</div>
           <span className={`${s.vbadge} ${s.vbS}`}>Scanning</span>
         </div>
-        <div className={s.sloader}>
-          <div className={s.sloaderRing} />
-          <div className={s.srtxt}>Analysing dermoscopic features</div>
-        </div>
+        <ScanLoader />
       </div>
     );
   }
@@ -398,7 +495,7 @@ function Results({ result, loading, rawResult }) {
         <div className={s.rh}><div className={s.rlb}>Analysis Report</div></div>
         <div className={s.rempty}>
           <div className={s.reicon}>
-            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="rgba(255,255,255,0.22)" strokeWidth="1.2">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="var(--t3)" strokeWidth="1.2">
               <circle cx="9" cy="9" r="7" />
               <path d="M9 6v4M9 12.5h.01" />
             </svg>
@@ -427,7 +524,7 @@ function Results({ result, loading, rawResult }) {
   const ringStroke   = cls === 'malignant' ? '#ff6b6b' : '#4cd964';
 
   return (
-    <div className={s.rc}>
+    <div className={`${s.rc} ${s.rcResult}`}>
       <div className={s.rh}>
         <div className={s.rlb}>Analysis Report</div>
         <span className={`${s.vbadge} ${bc}`}>{result.verdict}</span>
@@ -440,7 +537,7 @@ function Results({ result, loading, rawResult }) {
           </div>
           {rawResult && (
             <svg width="96" height="96" viewBox="0 0 110 110" style={{ flexShrink: 0 }}>
-              <circle cx="55" cy="55" r={RING_R} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="5" />
+              <circle cx="55" cy="55" r={RING_R} fill="none" stroke="var(--border)" strokeWidth="5" />
               <circle cx="55" cy="55" r={RING_R} fill="none"
                 stroke={ringStroke} strokeWidth="5"
                 strokeLinecap="round"
@@ -450,11 +547,11 @@ function Results({ result, loading, rawResult }) {
                 style={{ transition: 'stroke-dashoffset 1.1s cubic-bezier(0.16,1,0.3,1)' }}
               />
               <text x="55" y="50" textAnchor="middle" dominantBaseline="middle"
-                style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: '14px', fill: 'white', fontWeight: 400 }}>
+                style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: '14px', fill: 'currentColor', fontWeight: 400 }}>
                 {malignantPct}%
               </text>
               <text x="55" y="66" textAnchor="middle" dominantBaseline="middle"
-                style={{ fontFamily: 'var(--font-sans, system-ui)', fontSize: '7px', fill: 'rgba(255,255,255,0.35)', letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+                style={{ fontFamily: 'var(--font-sans, system-ui)', fontSize: '7px', fill: 'var(--t3)', letterSpacing: '0.12em', textTransform: 'uppercase' }}>
                 malignant
               </text>
             </svg>
@@ -462,7 +559,6 @@ function Results({ result, loading, rawResult }) {
         </div>
 
         <div className={s.rdiv} />
-
         <div className={s.rsum}>{result.summary}</div>
 
         {rawResult && (
@@ -484,12 +580,22 @@ function Results({ result, loading, rawResult }) {
         <div className={s.disc}>
           <strong>Medical Disclaimer —</strong> For informational purposes only. Always consult a board-certified dermatologist for any skin concern.
         </div>
+
+        {onReset && (
+          <button className={s.rescanBtn} onClick={onReset}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="1 4 1 10 7 10" />
+              <path d="M3.51 15a9 9 0 1 0 .49-3.17" />
+            </svg>
+            Run another scan
+          </button>
+        )}
       </div>
     </div>
   );
 }
 
-/* ── Scan section ────────────────────────────────────────── */
+/* ── Scan section ────────────────────────────────────────────── */
 function Scan() {
   const [img, setImg]         = useState(null);
   const [drag, setDrag]       = useState(false);
@@ -499,11 +605,19 @@ function Scan() {
   const [showHeatmap, setShowHeatmap] = useState(false);
   const fref = useRef(null);
 
+  const reset = useCallback(() => {
+    setImg(null);
+    setResult(null);
+    setRaw(null);
+    setShowHeatmap(false);
+    setTimeout(() => fref.current?.focus(), 50);
+  }, []);
+
   const proc = (file) => {
     if (!file) return;
     if (!['image/jpeg', 'image/jpg', 'image/png'].includes(file.type)) return;
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = () => {
       setImg({ url: URL.createObjectURL(file), name: file.name, file });
       setResult(null);
       setRaw(null);
@@ -580,7 +694,7 @@ function Scan() {
                 <div className={s.pbar}>
                   <span className={s.pname}>{img.name}</span>
                   <button className={s.prem}
-                    onClick={e => { e.stopPropagation(); setImg(null); setResult(null); setRaw(null); setShowHeatmap(false); }}>
+                    onClick={e => { e.stopPropagation(); reset(); }}>
                     Remove ×
                   </button>
                 </div>
@@ -603,19 +717,27 @@ function Scan() {
             )}
           </div>
           <button className={s.sbtn} disabled={!img || loading} onClick={analyse}>
-            {loading ? <><div className={s.sring} /> Analysing…</> : 'Run AI Analysis'}
+            {loading
+              ? <><div className={s.sring} /> Analysing…</>
+              : 'Run AI Analysis'
+            }
           </button>
         </div>
 
         {/* Right: results */}
-        <Results result={result} loading={loading} rawResult={rawResult} />
+        <Results
+          result={result}
+          loading={loading}
+          rawResult={rawResult}
+          onReset={result ? reset : null}
+        />
       </div>
     </section>
   );
 }
 
-/* ── Hero ────────────────────────────────────────────────── */
-function Hero({ onScan }) {
+/* ── Hero ────────────────────────────────────────────────────── */
+function Hero({ onScan, isDark }) {
   const [loaded, setLoaded] = useState(false);
   useEffect(() => {
     const t = setTimeout(() => setLoaded(true), 120);
@@ -630,15 +752,15 @@ function Hero({ onScan }) {
   });
 
   const stats = [
-    { v: '94.2%',   l: 'Detection accuracy'   },
-    { v: '< 10s',   l: 'Average scan time'     },
-    { v: '33k+',    l: 'Training images'        },
-    { v: 'Val AUC 0.9869', l: 'Best checkpoint' },
+    { v: '94.2%',        l: 'Detection accuracy'   },
+    { v: '< 10s',        l: 'Average scan time'     },
+    { v: '33k+',         l: 'Training images'       },
+    { v: 'Val AUC 0.9869', l: 'Best checkpoint'     },
   ];
 
   return (
     <section id="hero" className={s.hero} data-section-label="01 Hero">
-      <SilkCanvas />
+      {isDark && <SilkCanvas />}
       <div className={s.heroWave} />
       <div className={s.heroVignette} />
 
@@ -693,10 +815,13 @@ function Hero({ onScan }) {
   );
 }
 
-/* ── Root app ────────────────────────────────────────────── */
+/* ── Root app ────────────────────────────────────────────────── */
 export default function Home() {
-  const [sec, setSec]  = useState(0);
-  const ids            = ['hero', 'bento', 'scan'];
+  const [sec, setSec]          = useState(0);
+  const [isDark, toggleTheme]  = useDarkMode();
+  const ids                    = ['hero', 'bento', 'scan'];
+
+  useScrollParallax();
 
   useEffect(() => {
     const obs = new IntersectionObserver((entries) => {
@@ -714,13 +839,14 @@ export default function Home() {
     return () => obs.disconnect();
   }, []);
 
-  const goScan = () => document.getElementById('scan')?.scrollIntoView({ behavior: 'smooth' });
-  const goTo   = (i) => document.getElementById(ids[i])?.scrollIntoView({ behavior: 'smooth' });
+  const goScan    = () => document.getElementById('scan')?.scrollIntoView({ behavior: 'smooth' });
+  const goBento   = () => document.getElementById('bento')?.scrollIntoView({ behavior: 'smooth' });
+  const goTo      = (i) => document.getElementById(ids[i])?.scrollIntoView({ behavior: 'smooth' });
 
   const bars = [
-    { num: '01', label: 'Detect ',  hi: 'Melanoma', rest: ' Early',   desc: 'AI mole analysis, clinical grade.'      },
-    { num: '02', label: 'How the ', hi: 'AI',        rest: ' works',  desc: 'ABCDE criteria applied in seconds.'     },
-    { num: '03', label: 'Upload & ', hi: 'Analyse',  rest: '',        desc: 'Risk classification in under 10s.'      },
+    { num: '01', label: 'Detect ',   hi: 'Melanoma', rest: ' Early',  desc: 'AI mole analysis, clinical grade.'  },
+    { num: '02', label: 'How the ',  hi: 'AI',       rest: ' works',  desc: 'ABCDE criteria applied in seconds.' },
+    { num: '03', label: 'Upload & ', hi: 'Analyse',  rest: '',        desc: 'Risk classification in under 10s.'  },
   ];
   const b = bars[sec] || bars[0];
 
@@ -730,14 +856,17 @@ export default function Home() {
 
       {/* Nav */}
       <nav className={s.nav}>
-        <div className={s.logo}>Dermo<em className={s.logoEm}>Scan</em></div>
+        <div className={s.logo} onClick={() => goTo(0)} style={{ cursor: 'pointer' }}>
+          Dermo<em className={s.logoEm}>Scan</em>
+        </div>
         <ul className={s.navLinks}>
           <li className={`${s.navLink} ${sec === 0 ? s.navLinkAct : ''}`} onClick={() => goTo(0)}>Home</li>
           <li className={`${s.navLink} ${sec === 1 ? s.navLinkAct : ''}`} onClick={() => goTo(1)}>Platform</li>
           <li className={`${s.navLink} ${sec === 2 ? s.navLinkAct : ''}`} onClick={() => goTo(2)}>Scan</li>
         </ul>
         <div className={s.navRight}>
-          <button className={s.npill}>Research</button>
+          <ThemeToggle isDark={isDark} onToggle={toggleTheme} />
+          <button className={s.npill} onClick={goBento}>Research</button>
           <button className={s.ncta} onClick={goScan}>Scan Now</button>
         </div>
       </nav>
@@ -750,7 +879,7 @@ export default function Home() {
       </div>
 
       {/* Hero */}
-      <Hero onScan={goScan} />
+      <Hero onScan={goScan} isDark={isDark} />
 
       {/* Bento */}
       <section id="bento" className={s.sectionWrap} style={{ paddingTop: 52 }} data-section-label="02 Platform">

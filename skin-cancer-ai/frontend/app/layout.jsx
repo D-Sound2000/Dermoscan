@@ -1,20 +1,20 @@
-import { Cormorant_Garamond, DM_Sans, DM_Mono } from 'next/font/google';
+import { Josefin_Sans, Figtree, Fira_Mono } from 'next/font/google';
 import './globals.css';
 
-const cormorant = Cormorant_Garamond({
+const josefin = Josefin_Sans({
   subsets: ['latin'],
-  weight: ['300', '400', '600'],
+  weight: ['300', '400', '600', '700'],
   style: ['normal', 'italic'],
   variable: '--font-serif',
 });
 
-const dmSans = DM_Sans({
+const figtree = Figtree({
   subsets: ['latin'],
   weight: ['300', '400', '500', '600'],
   variable: '--font-sans',
 });
 
-const dmMono = DM_Mono({
+const firaMono = Fira_Mono({
   subsets: ['latin'],
   weight: ['400', '500'],
   variable: '--font-mono',
@@ -29,7 +29,8 @@ export default function RootLayout({ children }) {
   return (
     <html
       lang="en"
-      className={`${cormorant.variable} ${dmSans.variable} ${dmMono.variable}`}
+      data-theme="dark"
+      className={`${josefin.variable} ${figtree.variable} ${firaMono.variable}`}
     >
       <body>{children}</body>
     </html>

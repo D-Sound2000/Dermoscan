@@ -1,7 +1,9 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
+/* ── Dark theme (default) ──────────────────────────────────── */
+:root,
+html[data-theme="dark"] {
   --bg:        #050510;
   --bg2:       #080816;
   --accent:    oklch(0.62 0.26 298);
@@ -20,6 +22,33 @@
   --uncertain: #ffd60a;
   --r:         16px;
   --rl:        24px;
+  --shadow:    rgba(0,0,0,0.4);
+  --nav-bg:    rgba(5,5,16,0.55);
+  --vignette-top: rgba(5,5,16,0.6);
+  --vignette-bot: rgba(5,5,16,1);
+  --vignette-side: rgba(5,5,16,0.8);
+  --noise-op:  0.032;
+}
+
+/* ── Light theme ───────────────────────────────────────────── */
+html[data-theme="light"] {
+  --bg:        oklch(0.97 0.008 298);
+  --bg2:       oklch(0.93 0.012 298);
+  --glass:     rgba(255,255,255,0.68);
+  --glass-hi:  rgba(255,255,255,0.88);
+  --border:    oklch(0.80 0.022 298 / 0.38);
+  --border-hi: oklch(0.60 0.04 298 / 0.45);
+  --text:      oklch(0.14 0.028 298);
+  --t2:        oklch(0.34 0.025 298);
+  --t3:        oklch(0.54 0.02 298);
+  --t4:        oklch(0.72 0.015 298);
+  --accent-lo: oklch(0.88 0.04 298);
+  --shadow:    rgba(80,60,160,0.12);
+  --nav-bg:    oklch(0.96 0.01 298 / 0.88);
+  --vignette-top: rgba(243,241,255,0.75);
+  --vignette-bot: oklch(0.97 0.008 298);
+  --vignette-side: rgba(243,241,255,0.9);
+  --noise-op:  0.014;
 }
 
 *, *::before, *::after {
@@ -39,6 +68,7 @@ body {
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  transition: background 0.35s ease, color 0.35s ease;
 }
 
 body::after {
@@ -48,7 +78,7 @@ body::after {
   z-index: 9999;
   pointer-events: none;
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  opacity: 0.032;
+  opacity: var(--noise-op, 0.032);
 }
 
 button {
@@ -66,15 +96,16 @@ img {
 ::-webkit-scrollbar { width: 2px; }
 ::-webkit-scrollbar-thumb { background: var(--accent-lo); }
 
+/* ── Keyframes ─────────────────────────────────────────────── */
 @keyframes navDrop {
   from { transform: translateY(-100%); opacity: 0; }
   to   { transform: none; opacity: 1; }
 }
 
 @keyframes wdrift {
-  0%   { transform: scale(1.06) translate(0, 0);         }
-  50%  { transform: scale(1.1)  translate(-1%, 0.5%);    }
-  100% { transform: scale(1.08) translate(0.5%, -1%);    }
+  0%   { transform: scale(1.06) translate(0, 0);      }
+  50%  { transform: scale(1.1)  translate(-1%, 0.5%); }
+  100% { transform: scale(1.08) translate(0.5%, -1%); }
 }
 
 @keyframes dotPulse {
@@ -89,4 +120,28 @@ img {
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+@keyframes spinCCW {
+  to { transform: rotate(-360deg); }
+}
+
+@keyframes scanPulse {
+  0%, 100% { transform: scale(1);   opacity: 1;   }
+  50%      { transform: scale(1.9); opacity: 0.2; }
+}
+
+@keyframes fadeSlideUp {
+  from { opacity: 0; transform: translateY(7px); }
+  to   { opacity: 1; transform: translateY(0);   }
+}
+
+@keyframes shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position:  200% center; }
+}
+
+@keyframes resultSlide {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
