@@ -1,4 +1,4 @@
-import { Josefin_Sans, Figtree, Fira_Mono } from 'next/font/google';
+import { Figtree, Fira_Mono, Josefin_Sans } from 'next/font/google';
 import './globals.css';
 
 const josefin = Josefin_Sans({
@@ -10,7 +10,7 @@ const josefin = Josefin_Sans({
 
 const figtree = Figtree({
   subsets: ['latin'],
-  weight: ['300', '400', '500', '600'],
+  weight: ['300', '400', '500', '600', '700'],
   variable: '--font-sans',
 });
 
@@ -21,8 +21,8 @@ const firaMono = Fira_Mono({
 });
 
 export const metadata = {
-  title: 'DermoScan — AI Skin Analysis',
-  description: 'Dermoscopic binary classification using DenseNet-121, trained on ISIC 2020 at Val AUC 0.9869.',
+  title: 'DermoScan | AI Skin Analysis',
+  description: 'AI-assisted dermoscopic binary classification using DenseNet-121 and Grad-CAM heatmaps.',
 };
 
 export default function RootLayout({ children }) {
