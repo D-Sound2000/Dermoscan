@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 import s from './page.module.css';
 
-const API_URL = 'http://172.24.76.36:8000/predict-with-heatmap';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://172.24.76.36:8000/predict-with-heatmap';
 
 function useTheme() {
   const [theme, setTheme] = useState('dark');
