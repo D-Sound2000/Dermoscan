@@ -23,6 +23,7 @@ data/
 # Node
 frontend/node_modules/
 frontend/.next/
+frontend/.codex-*.log
 
 # OS
 .DS_Store
