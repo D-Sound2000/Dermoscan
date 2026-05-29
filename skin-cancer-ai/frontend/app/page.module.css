@@ -255,11 +255,11 @@ html[data-theme="light"] .uploadPanel,
 html[data-theme="light"] .resultPanel,
 html[data-theme="light"] .featureCard,
 html[data-theme="light"] .timelineItem {
-  background: linear-gradient(180deg, #ffffff, #fbfdfc);
+  background: linear-gradient(180deg, #262626, #202020);
 }
 
 html[data-theme="light"] .nav {
-  background: rgba(255, 255, 255, 0.82);
+  background: rgba(26, 26, 26, 0.82);
 }
 
 .visualHeader {
@@ -304,7 +304,7 @@ html[data-theme="light"] .nav {
 
 html[data-theme="light"] .skinPreview img {
   opacity: 0.82;
-  filter: saturate(0.78) contrast(0.96) brightness(1.1);
+  filter: saturate(0.72) contrast(1.04) brightness(0.88);
 }
 
 .scanFrame {
@@ -375,7 +375,7 @@ html[data-theme="light"] .skinPreview img {
 }
 
 html[data-theme="light"] .metricStrip {
-  background: #fbfdfc;
+  background: #262626;
 }
 
 .metric {
@@ -417,7 +417,7 @@ html[data-theme="light"] .metricStrip {
 
 html[data-theme="light"] .scanShell {
   background:
-    linear-gradient(180deg, #eef5f2, #f8fbfa 42%, #f7faf8),
+    linear-gradient(180deg, #202020, #1a1a1a 42%, #1a1a1a),
     var(--bg);
 }
 
@@ -521,7 +521,7 @@ html[data-theme="light"] .scanShell {
 }
 
 html[data-theme="light"] .dropzoneLoaded {
-  background: #e8f1ee;
+  background: #202020;
 }
 
 .uploadEmpty {
@@ -882,7 +882,7 @@ html[data-theme="light"] .dropzoneLoaded {
 }
 
 html[data-theme="light"] .evidence {
-  background: #ffffff;
+  background: #262626;
 }
 
 .featureGrid {
@@ -928,8 +928,8 @@ html[data-theme="light"] .evidence {
 
 html[data-theme="light"] .workflow {
   background:
-    linear-gradient(120deg, transparent, rgba(153, 101, 0, 0.06)),
-    #f5f9f7;
+    linear-gradient(120deg, transparent, rgba(255, 183, 3, 0.07)),
+    #1a1a1a;
 }
 
 .timeline {

@@ -81,7 +81,7 @@ export default function GlassmorphismTrustHero() {
         grainOverlay={0.06}
       />
       <MeshGradient
-        className="absolute inset-0 h-full w-full opacity-40"
+        className="absolute inset-0 h-full w-full opacity-[0.56]"
         colors={["#000000", "#ecfeff", "#06b6d4", "#fb923c"]}
         speed={reduceMotion ? 0 : 0.12}
         distortion={0.36}
@@ -89,8 +89,8 @@ export default function GlassmorphismTrustHero() {
         grainMixer={0.08}
         grainOverlay={0.04}
       />
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_72%_18%,rgba(236,254,255,.18),transparent_30%),linear-gradient(180deg,rgba(2,6,23,.78),rgba(2,6,23,.55)_42%,rgba(2,6,23,.9))]" />
-      <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-background to-transparent" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_72%_18%,rgba(236,254,255,.3),transparent_30%),linear-gradient(180deg,rgba(2,6,23,.52),rgba(2,6,23,.28)_42%,rgba(2,6,23,.72))]" />
+      <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-[rgba(26,26,26,0.7)] to-transparent" />
 
       <div className="relative z-10 mx-auto max-w-7xl px-4 py-20 sm:px-6 md:py-28 lg:px-8">
         <div className="grid grid-cols-1 items-start gap-12 lg:grid-cols-12 lg:gap-8">

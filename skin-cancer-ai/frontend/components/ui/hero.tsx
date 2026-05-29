@@ -6,35 +6,19 @@ import { MeshGradient, PulsingBorder } from "@paper-design/shaders-react";
 import { motion, useReducedMotion } from "framer-motion";
 import {
   Activity,
-  ArrowRight,
   BarChart3,
   FileScan,
   Microscope,
-  ScanLine,
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
-
-const navItems = [
-  { label: "Trust Layer", href: "#trust" },
-  { label: "Model Signals", href: "#trust" },
-  { label: "Review Flow", href: "#trust" },
-];
+import { Navbar } from "@/components/ui/mini-navbar";
 
 const signalCards = [
   { label: "Validation AUC", value: "0.9869", icon: BarChart3 },
   { label: "Inference Model", value: "DenseNet", icon: Microscope },
   { label: "Explainability", value: "Grad-CAM", icon: FileScan },
   { label: "Use Case", value: "Review", icon: ShieldCheck },
-];
-
-const particlePoints = [
-  { left: "24%", top: "28%", delay: 0 },
-  { left: "38%", top: "18%", delay: 0.22 },
-  { left: "58%", top: "31%", delay: 0.44 },
-  { left: "72%", top: "20%", delay: 0.66 },
-  { left: "44%", top: "52%", delay: 0.88 },
-  { left: "68%", top: "58%", delay: 1.1 },
 ];
 
 export default function ShaderShowcase() {
@@ -59,7 +43,7 @@ export default function ShaderShowcase() {
   }, []);
 
   return (
-    <section ref={containerRef} className="relative min-h-screen overflow-hidden bg-black text-white">
+    <section id="trust" ref={containerRef} className="relative min-h-screen overflow-hidden bg-black text-white">
       <svg className="absolute inset-0 h-0 w-0" aria-hidden>
         <defs>
           <filter id="glass-effect" x="-50%" y="-50%" width="200%" height="200%">
@@ -104,7 +88,7 @@ export default function ShaderShowcase() {
         grainOverlay={0.08}
       />
       <MeshGradient
-        className="absolute inset-0 h-full w-full opacity-[0.45]"
+        className="absolute inset-0 h-full w-full opacity-[0.62]"
         colors={["#000000", "#ecfeff", "#06b6d4", "#fb923c"]}
         speed={reduceMotion ? 0 : 0.18}
         distortion={0.42}
@@ -112,75 +96,12 @@ export default function ShaderShowcase() {
         grainMixer={0.08}
         grainOverlay={0.04}
       />
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_32%,rgba(236,254,255,.18),transparent_33%),linear-gradient(90deg,rgba(2,6,23,.86),rgba(2,6,23,.42)_48%,rgba(2,6,23,.74))]" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_32%,rgba(236,254,255,.28),transparent_33%),linear-gradient(90deg,rgba(2,6,23,.66),rgba(2,6,23,.24)_48%,rgba(2,6,23,.56))]" />
       <div className="absolute inset-x-0 bottom-0 h-48 bg-gradient-to-t from-background to-transparent" />
 
-      <header className="relative z-20 flex items-center justify-between gap-4 p-5 md:p-6">
-        <motion.div
-          className="group relative flex cursor-pointer items-center gap-3"
-          whileHover={{ scale: 1.04 }}
-          transition={{ type: "spring", stiffness: 400, damping: 18 }}
-        >
-          <motion.div
-            className="grid size-11 place-items-center rounded-full border border-cyan-200/20 bg-white/10 text-cyan-100 backdrop-blur-xl"
-            style={{ filter: "url(#logo-glow)" }}
-            whileHover={{ rotate: [0, -2, 2, 0] }}
-            transition={{ duration: 0.55, ease: "easeInOut" }}
-          >
-            <ScanLine className="size-5" />
-          </motion.div>
-          <div>
-            <div className="text-sm font-semibold tracking-normal text-white">DermoScan</div>
-            <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-100/60">AI lesion review</div>
-          </div>
+      <Navbar />
 
-          <div className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-            {particlePoints.map((point) => (
-              <motion.div
-                key={`${point.left}-${point.top}`}
-                className="absolute h-1 w-1 rounded-full bg-cyan-100/70"
-                style={{ left: point.left, top: point.top }}
-                animate={
-                  reduceMotion
-                    ? undefined
-                    : { y: [-8, -18, -8], opacity: [0, 1, 0], scale: [0, 1, 0] }
-                }
-                transition={{ duration: 2, repeat: Number.POSITIVE_INFINITY, delay: point.delay, ease: "easeInOut" }}
-              />
-            ))}
-          </div>
-        </motion.div>
-
-        <nav className="hidden items-center gap-2 rounded-full border border-white/10 bg-white/10 px-2 py-1.5 backdrop-blur-xl md:flex">
-          {navItems.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className="rounded-full px-3 py-2 text-xs font-medium text-white/75 no-underline transition-all duration-200 hover:bg-white/10 hover:text-white"
-            >
-              {item.label}
-            </Link>
-          ))}
-        </nav>
-
-        <div id="gooey-btn" className="relative flex items-center group" style={{ filter: "url(#gooey-filter)" }}>
-          <Link
-            href="#trust"
-            aria-label="Explore DermoScan trust layer"
-            className="absolute right-0 z-0 flex h-9 -translate-x-10 items-center justify-center rounded-full bg-white px-2.5 py-2 text-xs font-medium text-black no-underline transition-all duration-300 hover:bg-white/90 group-hover:-translate-x-20"
-          >
-            <ArrowRight className="size-3" />
-          </Link>
-          <Link
-            href="#trust"
-            className="z-10 flex h-9 items-center rounded-full bg-white px-6 py-2 text-xs font-medium text-black no-underline transition-all duration-300 hover:bg-white/90"
-          >
-            Explore
-          </Link>
-        </div>
-      </header>
-
-      <main className="relative z-20 grid min-h-[calc(100vh-92px)] items-end px-6 pb-8 md:px-8">
+      <main className="relative z-20 grid min-h-screen items-end px-6 pb-8 pt-28 md:px-8">
         <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_25rem] lg:items-end">
           <div className="max-w-4xl text-left">
             <motion.div
