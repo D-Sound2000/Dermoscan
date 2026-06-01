@@ -7,12 +7,19 @@ import { motion, useReducedMotion } from "framer-motion";
 import {
   Activity,
   BarChart3,
+  Eye,
   FileScan,
+  Flame,
+  ImagePlus,
+  Loader2,
   Microscope,
   ShieldCheck,
   Sparkles,
+  ThermometerSun,
+  UploadCloud,
+  X,
 } from "lucide-react";
-import { Navbar } from "@/components/ui/mini-navbar";
+import { Header } from "@/components/ui/header-2";
 
 const signalCards = [
   { label: "Validation AUC", value: "0.9869", icon: BarChart3 },
@@ -21,9 +28,34 @@ const signalCards = [
   { label: "Use Case", value: "Review", icon: ShieldCheck },
 ];
 
+type Prediction = {
+  predicted_class: string;
+  malignant_probability: number;
+  benign_probability: number;
+  threshold_used: number;
+  recommendation: string;
+};
+
+type HeatmapPrediction = Prediction & {
+  heatmap_image: string;
+};
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_DERMOSCAN_API_URL ?? "http://localhost:8000";
+
+const formatProbability = (value: number) => `${Math.round(value * 100)}%`;
+
 export default function ShaderShowcase() {
   const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const [isActive, setIsActive] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [prediction, setPrediction] = useState<Prediction | null>(null);
+  const [heatmapImage, setHeatmapImage] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isHeatmapLoading, setIsHeatmapLoading] = useState(false);
   const reduceMotion = useReducedMotion();
 
   useEffect(() => {
@@ -42,8 +74,101 @@ export default function ShaderShowcase() {
     };
   }, []);
 
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [previewUrl]);
+
+  const chooseFile = (file: File | undefined) => {
+    if (!file) return;
+
+    if (!["image/jpeg", "image/jpg", "image/png"].includes(file.type)) {
+      setUploadError("Please upload a JPEG or PNG dermoscopy image.");
+      return;
+    }
+
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setSelectedFile(file);
+    setPreviewUrl(URL.createObjectURL(file));
+    setPrediction(null);
+    setHeatmapImage(null);
+    setUploadError(null);
+  };
+
+  const clearSelection = () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setSelectedFile(null);
+    setPreviewUrl(null);
+    setPrediction(null);
+    setHeatmapImage(null);
+    setUploadError(null);
+    if (inputRef.current) inputRef.current.value = "";
+  };
+
+  const requestPrediction = async <T extends Prediction>(endpoint: "predict" | "predict-with-heatmap") => {
+    if (!selectedFile) throw new Error("Choose a JPEG or PNG image first.");
+
+    const formData = new FormData();
+    formData.append("file", selectedFile);
+
+    const response = await fetch(`${API_BASE_URL}/${endpoint}`, {
+      method: "POST",
+      body: formData,
+    });
+    const payload = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      const detail = typeof payload?.detail === "string" ? payload.detail : "The Python model did not return a prediction.";
+      throw new Error(detail);
+    }
+
+    return payload as T;
+  };
+
+  const analyzeFile = async () => {
+    if (!selectedFile) {
+      inputRef.current?.click();
+      return;
+    }
+
+    setIsSubmitting(true);
+    setUploadError(null);
+    setPrediction(null);
+    setHeatmapImage(null);
+
+    try {
+      setPrediction(await requestPrediction("predict"));
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : "Could not reach the DermoScan backend.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const viewHeatmap = async () => {
+    if (!selectedFile) return;
+
+    setIsHeatmapLoading(true);
+    setUploadError(null);
+
+    try {
+      const payload = await requestPrediction<HeatmapPrediction>("predict-with-heatmap");
+      setPrediction(payload);
+      setHeatmapImage(payload.heatmap_image);
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : "Could not load the Grad-CAM heatmap.");
+    } finally {
+      setIsHeatmapLoading(false);
+    }
+  };
+
+  const riskValue = prediction ? Math.round(prediction.malignant_probability * 100) : 0;
+  const benignValue = prediction ? Math.round(prediction.benign_probability * 100) : 0;
+  const isMalignant = prediction?.predicted_class.toLowerCase() === "malignant";
+
   return (
-    <section id="trust" ref={containerRef} className="relative min-h-screen overflow-hidden bg-black text-white">
+    <section id="overview" ref={containerRef} className="relative min-h-screen scroll-mt-32 overflow-hidden bg-black text-white">
       <svg className="absolute inset-0 h-0 w-0" aria-hidden>
         <defs>
           <filter id="glass-effect" x="-50%" y="-50%" width="200%" height="200%">
@@ -96,16 +221,16 @@ export default function ShaderShowcase() {
         grainMixer={0.08}
         grainOverlay={0.04}
       />
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_32%,rgba(236,254,255,.28),transparent_33%),linear-gradient(90deg,rgba(2,6,23,.66),rgba(2,6,23,.24)_48%,rgba(2,6,23,.56))]" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_36%_38%,rgba(236,254,255,.28),transparent_33%),linear-gradient(90deg,rgba(2,6,23,.66),rgba(2,6,23,.24)_48%,rgba(2,6,23,.56))]" />
       <div className="absolute inset-x-0 bottom-0 h-48 bg-gradient-to-t from-background to-transparent" />
 
-      <Navbar />
+      <Header />
 
       <main className="relative z-20 grid min-h-screen items-end px-6 pb-8 pt-28 md:px-8">
-        <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_25rem] lg:items-end">
-          <div className="max-w-4xl text-left">
+        <div className="mx-auto grid w-full max-w-5xl gap-8">
+          <div className="mx-auto max-w-5xl text-center">
             <motion.div
-              className="relative mb-6 inline-flex items-center rounded-full border border-white/10 bg-white/10 px-4 py-2 backdrop-blur-sm"
+              className="relative mx-auto mb-6 inline-flex items-center rounded-full border border-white/10 bg-white/10 px-4 py-2 backdrop-blur-sm"
               style={{ filter: "url(#glass-effect)" }}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -124,75 +249,258 @@ export default function ShaderShowcase() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.8, delay: 0.32 }}
             >
-              <span className="block text-4xl font-light tracking-wide text-cyan-100/90 md:text-5xl lg:text-6xl">
+              <span className="block text-4xl font-black text-cyan-100/90 md:text-5xl lg:text-6xl">
                 Review skin lesions
               </span>
-              <span className="block font-black drop-shadow-2xl">with AI</span>
-              <span className="block text-white/80 italic">and explainable heatmaps</span>
+              <span className="block drop-shadow-2xl">with AI</span>
+              <span className="block font-black text-white/80">and explainable heatmaps</span>
             </motion.h1>
 
             <motion.p
-              className="mb-8 max-w-2xl text-lg font-light leading-relaxed text-white/72"
+              className="mx-auto mb-8 max-w-2xl text-lg font-light leading-relaxed text-white/72"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.68 }}
             >
-              A polished AI lesion-review interface built around transparent scoring, Grad-CAM evidence, and a calmer
-              way to understand what the model is seeing.
+              Upload a lesion. Get a score, a heatmap, and the reasoning behind both.
             </motion.p>
 
             <motion.div
-              className="flex flex-wrap items-center gap-4"
+              className="flex flex-wrap items-center justify-center gap-4"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.86 }}
             >
               <motion.div whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}>
                 <Link
-                  href="#trust"
+                  href="#scan"
                   className="inline-flex rounded-full bg-gradient-to-r from-cyan-500 to-orange-500 px-9 py-4 text-sm font-semibold text-white no-underline shadow-lg shadow-cyan-950/40 transition-all duration-300 hover:from-cyan-400 hover:to-orange-400"
                 >
-                  Explore trust layer
+                  Start scan
                 </Link>
               </motion.div>
               <motion.div whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}>
                 <Link
-                  href="#trust"
+                  href="#signals"
                   className="inline-flex rounded-full border-2 border-white/25 bg-transparent px-9 py-4 text-sm font-medium text-white no-underline backdrop-blur-sm transition-all duration-300 hover:border-cyan-300/50 hover:bg-white/10 hover:text-cyan-50"
                 >
                   See model signals
                 </Link>
               </motion.div>
             </motion.div>
-          </div>
 
-          <motion.aside
-            className="relative hidden rounded-[2rem] border border-white/10 bg-white/10 p-5 shadow-2xl shadow-black/30 backdrop-blur-2xl lg:block"
-            initial={{ opacity: 0, x: 32, scale: 0.96 }}
-            animate={{ opacity: 1, x: 0, scale: 1 }}
-            transition={{ duration: 0.8, delay: 0.55, ease: [0.16, 1, 0.3, 1] }}
-          >
-            <div className="mb-5 flex items-center justify-between">
-              <div>
-                <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-cyan-100/60">Live model context</p>
-                <h2 className="mt-2 text-2xl font-semibold text-white">Transparent triage</h2>
-              </div>
-              <Activity className="size-6 text-cyan-200" />
-            </div>
-            <div className="grid gap-3">
-              {signalCards.map((item) => (
-                <div key={item.label} className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 p-4">
-                  <div className="grid size-10 place-items-center rounded-full bg-cyan-200/10 text-cyan-100">
-                    <item.icon className="size-5" />
-                  </div>
-                  <div>
-                    <strong className="block text-lg leading-none text-white">{item.value}</strong>
-                    <span className="mt-1 block text-xs text-white/55">{item.label}</span>
+            <motion.section
+              id="scan"
+              className="mx-auto mt-6 grid w-full max-w-4xl scroll-mt-32 gap-3 rounded-[2rem] border border-white/[0.08] bg-white/10 p-3 text-left shadow-2xl shadow-cyan-950/25 backdrop-blur-2xl lg:grid-cols-[minmax(18rem,0.86fr)_minmax(0,1fr)]"
+              style={{ filter: "url(#glass-effect)" }}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 1.02 }}
+            >
+              <input
+                ref={inputRef}
+                type="file"
+                accept="image/png,image/jpeg"
+                className="hidden"
+                onChange={(event) => chooseFile(event.target.files?.[0])}
+              />
+              <div
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  setIsDragging(true);
+                }}
+                onDragLeave={() => setIsDragging(false)}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  setIsDragging(false);
+                  chooseFile(event.dataTransfer.files?.[0]);
+                }}
+                className={`group relative overflow-hidden rounded-[1.45rem] border border-dashed p-4 transition-all duration-300 ${
+                  isDragging
+                    ? "border-cyan-200/80 bg-cyan-100/15 shadow-[0_0_42px_rgba(34,211,238,0.22)]"
+                    : "border-white/[0.08] bg-black/25 hover:border-cyan-200/45 hover:bg-white/10"
+                }`}
+              >
+                <div className="absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-cyan-200/50 to-transparent" />
+                <div className="grid min-h-[19rem] gap-4">
+                  <button
+                    type="button"
+                    aria-label="Upload a JPEG or PNG lesion image"
+                    onClick={() => inputRef.current?.click()}
+                    className="grid aspect-square min-h-0 place-items-center overflow-hidden rounded-[1.35rem] border border-white/[0.08] bg-white/10 text-center outline-none transition focus-visible:ring-2 focus-visible:ring-cyan-200/70"
+                  >
+                    <span className="relative flex h-full w-full flex-col items-center justify-center overflow-hidden">
+                      {previewUrl ? (
+                        <>
+                          <img src={previewUrl} alt={selectedFile?.name ?? "Selected lesion image"} className="h-full w-full object-cover" />
+                          <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-4 pb-4 pt-16 text-left">
+                            <span className="block truncate text-sm font-semibold text-white">{selectedFile?.name}</span>
+                            <span className="mt-1 block font-mono text-[10px] uppercase tracking-[0.18em] text-cyan-100/70">Ready to scan</span>
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="mb-4 grid size-16 place-items-center rounded-full border border-cyan-100/20 bg-cyan-100/10 text-cyan-100 transition group-hover:scale-105">
+                            <ImagePlus className="size-8" />
+                          </span>
+                          <span className="max-w-56 text-balance text-xl font-semibold text-white">Drop image here</span>
+                          <span className="mt-2 max-w-60 text-sm leading-6 text-white/68">Drop a dermoscopy image, or click to browse</span>
+                        </>
+                      )}
+                    </span>
+                  </button>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-cyan-100/65">Python model upload</p>
+                      <p className="mt-1 truncate text-sm text-white/60">{selectedFile ? selectedFile.name : "No image selected"}</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => inputRef.current?.click()}
+                        className="inline-flex min-h-10 items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 text-xs font-semibold text-white/85 transition hover:bg-white/20"
+                      >
+                        <UploadCloud className="size-4" />
+                        Change
+                      </button>
+                      {selectedFile ? (
+                        <button
+                          type="button"
+                          aria-label="Clear selected image"
+                          onClick={clearSelection}
+                          className="grid size-10 place-items-center rounded-full border border-white/15 bg-white/10 text-white/75 transition hover:bg-white/20 hover:text-white"
+                        >
+                          <X className="size-4" />
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
-              ))}
-            </div>
-          </motion.aside>
+              </div>
+
+              <div id="results" className="scroll-mt-32 rounded-[1.45rem] border border-white/[0.08] bg-black/25 p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-cyan-100/65">Scan result</p>
+                    <h2 className="mt-2 text-2xl font-semibold text-white">
+                      {prediction ? prediction.predicted_class : isSubmitting ? "Analyzing image" : "Awaiting scan"}
+                    </h2>
+                  </div>
+                  <div className={`grid size-14 place-items-center rounded-full border ${
+                    prediction
+                      ? isMalignant
+                        ? "border-orange-200/35 bg-orange-400/15 text-orange-100"
+                        : "border-emerald-200/35 bg-emerald-400/15 text-emerald-100"
+                      : "border-white/15 bg-white/10 text-cyan-100"
+                  }`}>
+                    {isSubmitting ? <Loader2 className="size-6 animate-spin" /> : prediction ? <ThermometerSun className="size-6" /> : <FileScan className="size-6" />}
+                  </div>
+                </div>
+
+                <div aria-live="polite" className="mt-4 min-h-12 rounded-[1rem] border border-white/[0.08] bg-white/[0.06] px-4 py-3 text-sm leading-6 text-white/68">
+                  {uploadError ? (
+                    <span className="text-orange-100">{uploadError}</span>
+                  ) : prediction ? (
+                    <span>{prediction.recommendation}</span>
+                  ) : (
+                    <span>{selectedFile ? "Image loaded. Run scan to receive probabilities and heatmap access." : "Upload a lesion image to call the backend model."}</span>
+                  )}
+                </div>
+
+                <div className="mt-4 rounded-[1.2rem] border border-white/[0.08] bg-black/20 p-4">
+                  <div className="flex items-center justify-between gap-3 font-mono text-[10px] uppercase tracking-[0.18em]">
+                    <span className="text-emerald-100/80">Benign {prediction ? formatProbability(prediction.benign_probability) : <span className="text-white/30">—</span>}</span>
+                    <span className="text-orange-100/80">Malignant {prediction ? formatProbability(prediction.malignant_probability) : <span className="text-white/30">—</span>}</span>
+                  </div>
+                  <div className="relative mt-3 h-5 overflow-hidden rounded-full border border-white/[0.08] bg-white/10">
+                    {prediction ? (
+                      <>
+                        <div className="absolute inset-y-0 left-0 bg-gradient-to-r from-emerald-300 to-cyan-200 transition-[width] duration-700" style={{ width: `${benignValue}%` }} />
+                        <div className="absolute inset-y-0 right-0 bg-gradient-to-r from-orange-300 to-red-400 transition-[width] duration-700" style={{ width: `${riskValue}%` }} />
+                        <div className="absolute inset-y-0 w-px bg-white/80 shadow-[0_0_10px_rgba(255,255,255,0.8)] transition-[left] duration-700" style={{ left: `${benignValue}%` }} />
+                      </>
+                    ) : (
+                      <div className="absolute inset-y-0 left-0 w-1/2 bg-white/[0.16]" />
+                    )}
+                  </div>
+                  <div className="mt-4 grid grid-cols-2 gap-3">
+                    <div className="rounded-2xl border border-white/[0.08] bg-emerald-300/10 p-3">
+                      <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-emerald-100/65">Benign</span>
+                      <strong className="mt-2 block text-3xl text-emerald-100">{prediction ? formatProbability(prediction.benign_probability) : <span className="text-white/30">—</span>}</strong>
+                    </div>
+                    <div className="rounded-2xl border border-white/[0.08] bg-orange-300/10 p-3">
+                      <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-orange-100/65">Malignant</span>
+                      <strong className="mt-2 block text-3xl text-orange-100">{prediction ? formatProbability(prediction.malignant_probability) : <span className="text-white/30">—</span>}</strong>
+                    </div>
+                  </div>
+                </div>
+
+                {heatmapImage ? (
+                  <div className="mt-4 overflow-hidden rounded-[1.2rem] border border-white/[0.08] bg-black/30">
+                    <img src={heatmapImage} alt="Grad-CAM heatmap for selected lesion" className="h-56 w-full object-cover" />
+                    <div className="flex items-center gap-2 px-4 py-3 text-sm text-cyan-50/75">
+                      <Flame className="size-4 text-orange-200" />
+                      Grad-CAM heatmap generated from the malignant-class activation.
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <motion.button
+                    type="button"
+                    onClick={analyzeFile}
+                    disabled={isSubmitting || isHeatmapLoading}
+                    whileHover={isSubmitting || isHeatmapLoading ? undefined : { scale: 1.03 }}
+                    whileTap={isSubmitting || isHeatmapLoading ? undefined : { scale: 0.97 }}
+                    className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-gradient-to-r from-cyan-500 to-orange-500 px-6 text-sm font-semibold text-white shadow-lg shadow-cyan-950/35 transition hover:from-cyan-400 hover:to-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isSubmitting ? <Loader2 className="size-4 animate-spin" /> : <FileScan className="size-4" />}
+                    {selectedFile ? "Run scan" : "Choose image"}
+                  </motion.button>
+                  <motion.button
+                    type="button"
+                    onClick={viewHeatmap}
+                    disabled={!prediction || isSubmitting || isHeatmapLoading}
+                    whileHover={!prediction || isSubmitting || isHeatmapLoading ? undefined : { scale: 1.03 }}
+                    whileTap={!prediction || isSubmitting || isHeatmapLoading ? undefined : { scale: 0.97 }}
+                    className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full border border-white/20 bg-white/10 px-6 text-sm font-semibold text-white/85 transition hover:border-cyan-200/45 hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-45"
+                  >
+                    {isHeatmapLoading ? <Loader2 className="size-4 animate-spin" /> : <Eye className="size-4" />}
+                    {heatmapImage ? "Refresh heatmap" : "View heatmap"}
+                  </motion.button>
+                </div>
+              </div>
+            </motion.section>
+          </div>
+
+            <motion.aside
+              id="signals"
+              className="relative mx-auto w-full max-w-4xl scroll-mt-32 rounded-[2rem] border border-white/[0.08] bg-white/10 p-5 text-left shadow-2xl shadow-black/30 backdrop-blur-2xl"
+              initial={{ opacity: 0, y: 24, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ duration: 0.8, delay: 0.55, ease: [0.16, 1, 0.3, 1] }}
+            >
+              <div className="mb-5 flex items-center justify-between">
+                <div>
+                  <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-cyan-100/60">Model Intelligence</p>
+                  <h2 className="mt-2 text-2xl font-semibold text-white">Transparent triage</h2>
+                </div>
+                <Activity className="size-6 text-cyan-200" />
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                {signalCards.map((item) => (
+                  <div key={item.label} className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 p-4">
+                    <div className="grid size-10 place-items-center rounded-full bg-cyan-200/10 text-cyan-100">
+                      <item.icon className="size-5" />
+                    </div>
+                    <div>
+                      <strong className="block text-lg leading-none text-white">{item.value}</strong>
+                      <span className="mt-1 block text-xs text-white/55">{item.label}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </motion.aside>
         </div>
       </main>
 
