@@ -43,6 +43,10 @@ type WeatherSafetyResponse = {
   cloud_cover: number;
   peak_window: string;
   best_time: string;
+  best_outdoor_window: string;
+  sunscreen_advice: string;
+  clothing_advice: string;
+  hydration_advice: string;
   air_quality_index?: number;
   air_quality_category?: string;
   risk_level: string;
@@ -113,6 +117,94 @@ function getProtectionActions(uvIndex: number) {
   ];
 }
 
+function getSunscreenAdvice(uvIndex: number) {
+  if (uvIndex >= 11) {
+    return "Use SPF 50+ broad-spectrum sunscreen, reapply every 2 hours, and limit sun exposure.";
+  }
+
+  if (uvIndex >= 8) {
+    return "Choose SPF 50+ and reapply often; seek shade during the strongest midday sun.";
+  }
+
+  if (uvIndex >= 6) {
+    return "Use SPF 30+ broad-spectrum sunscreen and reapply after sweating or swimming.";
+  }
+
+  if (uvIndex >= 3) {
+    return "Apply SPF 30 on exposed skin before spending over 20 minutes outdoors.";
+  }
+
+  return "Use daily protection like SPF 15+ on exposed skin when spending extended time outside.";
+}
+
+function getClothingAdvice(
+  temperature: number,
+  uvIndex: number,
+  condition: string,
+) {
+  const clothing = [];
+  const isCool = temperature <= 60;
+  const isWarm = temperature >= 80;
+  const isRainy = /rain|drizzle|thunderstorm|snow/i.test(condition);
+
+  if (uvIndex >= 6) {
+    clothing.push("light long sleeves or UPF fabric");
+    clothing.push("wide-brim hat and UV sunglasses");
+  } else if (uvIndex >= 3) {
+    clothing.push("a hat or cap and sunglasses");
+    clothing.push("a lightweight layer for changing conditions");
+  } else {
+    clothing.push("sunglasses and a sun hat");
+    clothing.push("a comfortable layer if it cools later");
+  }
+
+  if (isRainy) {
+    clothing.push("waterproof outerwear");
+  } else if (isCool) {
+    clothing.push("a windproof jacket or light layer");
+  } else if (isWarm) {
+    clothing.push("breathable, moisture-wicking fabrics");
+  }
+
+  return `Wear ${clothing.join(", ")} for the current conditions.`;
+}
+
+function getHydrationAdvice(temperature: number, humidity: number) {
+  if (temperature >= 90 || humidity >= 75) {
+    return "Drink water regularly, avoid peak heat hours, and take frequent shade breaks.";
+  }
+
+  if (temperature >= 80) {
+    return "Stay hydrated and rest in shade during longer outdoor sessions.";
+  }
+
+  return "Keep water available and stay mindful of comfort during outdoor activity.";
+}
+
+function chooseBestOutdoorWindow(times: string[], uvValues: number[]) {
+  const daySlots = times
+    .map((time, index) => ({
+      time: String(time),
+      uv: uvValues[index] ?? 0,
+    }))
+    .filter(({ time }) => {
+      const hour = Number(time.slice(11, 13));
+      return hour >= 8 && hour <= 18;
+    });
+
+  if (!daySlots.length) {
+    return "later today when the sun is lower";
+  }
+
+  const safeSlots = daySlots.filter((slot) => slot.uv <= 3);
+  if (safeSlots.length) {
+    return `${safeSlots[0].time.slice(11, 16)} when UV is lowest today`;
+  }
+
+  const bestSlot = daySlots.reduce((best, slot) => (slot.uv < best.uv ? slot : best), daySlots[0]);
+  return `${bestSlot.time.slice(11, 16)} when UV is most moderate`;
+}
+
 const initialForecast: WeatherSafetyResponse = {
   city: "San Jose, CA",
   condition: "Clear afternoon",
@@ -126,6 +218,10 @@ const initialForecast: WeatherSafetyResponse = {
   best_time: "5:00 PM",
   air_quality_index: undefined,
   air_quality_category: "Good",
+  best_outdoor_window: "Late afternoon around 5:00 PM",
+  sunscreen_advice: "SPF 30+, reapply every 2 hours, and cover exposed skin.",
+  clothing_advice: "Light layers with a brimmed hat, sunglasses, and UV-protective fabric.",
+  hydration_advice: "Stay hydrated and avoid long sun exposure during peak hours.",
   risk_level: "High",
   skin_safety_score: 53,
   verdict: "Go prepared",
@@ -333,6 +429,7 @@ export function WeatherSafetyAdvisor() {
       const bestTime = bestTimeIndex >= 0 && times[bestTimeIndex]
         ? String(times[bestTimeIndex]).slice(11, 16)
         : "Late afternoon";
+      const bestOutdoorWindow = chooseBestOutdoorWindow(times, uvValues);
 
       const peakUv = Math.max(...uvValues);
       const peakIndexes = uvValues
@@ -365,6 +462,9 @@ export function WeatherSafetyAdvisor() {
                 : "Very Unhealthy";
 
       const advisoryData = getAdvisory(currentUv, temperature, cloudCover, humidity, windMph, currentHour, airQualityIndex);
+      const sunscreenAdvice = getSunscreenAdvice(currentUv);
+      const clothingAdvice = getClothingAdvice(temperature, currentUv, condition);
+      const hydrationAdvice = getHydrationAdvice(temperature, humidity);
 
       const sampleIndexes = [9, 11, 13, 15, 17];
       const hourlyUv = sampleIndexes
@@ -387,6 +487,10 @@ export function WeatherSafetyAdvisor() {
         cloud_cover: Math.round(cloudCover),
         peak_window: `${startTime} - ${endTime}`,
         best_time: bestTime,
+        best_outdoor_window: bestOutdoorWindow,
+        sunscreen_advice: sunscreenAdvice,
+        clothing_advice: clothingAdvice,
+        hydration_advice: hydrationAdvice,
         air_quality_index: airQualityIndex,
         air_quality_category: airQualityCategory,
         risk_level: advisoryData.level,
@@ -610,6 +714,7 @@ export function WeatherSafetyAdvisor() {
                   <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-cyan-100/55">Peak exposure</p>
                   <p className="mt-2 text-sm text-white/72">Avoid prolonged direct sun from {forecast.peak_window}.</p>
                   <p className="mt-2 text-sm text-white/72">Best time to go outside: {forecast.best_time}.</p>
+                  <p className="mt-2 text-sm text-white/72">Lower UV window: {forecast.best_outdoor_window}.</p>
                 </div>
               </div>
             </div>
@@ -643,17 +748,42 @@ export function WeatherSafetyAdvisor() {
 
           <article className="rounded-[2rem] border border-white/[0.08] bg-white/[0.06] p-5">
             <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-cyan-100/62">Protection plan</p>
-            <div className="mt-4 grid gap-3">
-              {forecast.actions.map((item) => (
-                <div key={item} className="flex items-start gap-3 rounded-[1.1rem] border border-white/[0.08] bg-black/20 p-3">
-                  <span className="grid size-10 place-items-center rounded-full bg-cyan-100/10 text-cyan-100">
-                    <ShieldCheck className="size-4" />
-                  </span>
-                  <span>
-                    <p className="text-sm text-white">{item}</p>
-                  </span>
+            <div className="mt-5 grid gap-3">
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="rounded-[1.1rem] border border-white/[0.08] bg-black/20 p-4">
+                  <div className="flex items-center gap-2 text-cyan-100">
+                    <SunMedium className="size-4" />
+                    <p className="text-sm font-semibold text-white">Sunscreen</p>
+                  </div>
+                  <p className="mt-3 text-sm leading-6 text-white/72">{forecast.sunscreen_advice}</p>
                 </div>
-              ))}
+                <div className="rounded-[1.1rem] border border-white/[0.08] bg-black/20 p-4">
+                  <div className="flex items-center gap-2 text-cyan-100">
+                    <Shirt className="size-4" />
+                    <p className="text-sm font-semibold text-white">What to wear</p>
+                  </div>
+                  <p className="mt-3 text-sm leading-6 text-white/72">{forecast.clothing_advice}</p>
+                </div>
+                <div className="rounded-[1.1rem] border border-white/[0.08] bg-black/20 p-4">
+                  <div className="flex items-center gap-2 text-cyan-100">
+                    <Droplets className="size-4" />
+                    <p className="text-sm font-semibold text-white">Hydration</p>
+                  </div>
+                  <p className="mt-3 text-sm leading-6 text-white/72">{forecast.hydration_advice}</p>
+                </div>
+              </div>
+              <div className="grid gap-3">
+                {forecast.actions.map((item) => (
+                  <div key={item} className="flex items-start gap-3 rounded-[1.1rem] border border-white/[0.08] bg-black/20 p-3">
+                    <span className="grid size-10 place-items-center rounded-full bg-cyan-100/10 text-cyan-100">
+                      <ShieldCheck className="size-4" />
+                    </span>
+                    <span>
+                      <p className="text-sm text-white">{item}</p>
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
           </article>
         </div>
