@@ -4,12 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import {
   CloudSun,
   Droplets,
-  Glasses,
   HatGlasses,
   MapPin,
   Shirt,
   ShieldCheck,
-  Sparkles,
   SunMedium,
   ThermometerSun,
   Umbrella,
@@ -342,6 +340,10 @@ export function WeatherSafetyAdvisor() {
   );
   const displayTemp = unit === "F" ? forecast.temperature : Math.round((forecast.temperature - 32) * (5 / 9));
   const displayFeelsLike = unit === "F" ? forecast.feels_like : Math.round((forecast.feels_like - 32) * (5 / 9));
+  const safetyProgress = Math.max(0, Math.min(100, advisory.score));
+  const circleRadius = 52;
+  const circleCircumference = 2 * Math.PI * circleRadius;
+  const strokeDashoffset = circleCircumference * (1 - safetyProgress / 100);
 
   const fetchWeather = async (location: string, coordinates?: { latitude: number; longitude: number }) => {
     const query = location.trim();
@@ -683,14 +685,44 @@ export function WeatherSafetyAdvisor() {
             transition={{ duration: reduceMotion ? 0 : 0.65, delay: 0.08, ease: [0.16, 1, 0.3, 1] }}
           >
             <div className="grid gap-5 md:grid-cols-[12rem_1fr]">
-              <div className="relative grid aspect-square place-items-center rounded-full border border-white/[0.08] bg-black/25">
+              <div className="relative grid aspect-square place-items-center rounded-full border border-white/[0.08] bg-black/25 p-3">
+                <div className="absolute inset-x-0 top-0 -translate-y-3/4 text-center text-[11px] uppercase tracking-[0.2em] text-white/45">
+                  Safety score
+                </div>
                 <div
                   className={`absolute inset-3 rounded-full bg-gradient-to-br ${advisory.tone} opacity-90`}
                   style={{ clipPath: `polygon(50% 50%, 50% 0, ${50 + advisory.score / 2}% 0, 100% 100%, 0 100%)` }}
                 />
                 <div className="relative grid size-32 place-items-center rounded-full border border-white/[0.12] bg-[#020303] text-center">
+                  <svg className="absolute inset-0 h-full w-full" viewBox="0 0 120 120">
+                    <circle
+                      cx="60"
+                      cy="60"
+                      r="52"
+                      fill="none"
+                      stroke="rgba(255,255,255,0.08)"
+                      strokeWidth="12"
+                    />
+                    <circle
+                      cx="60"
+                      cy="60"
+                      r="52"
+                      fill="none"
+                      stroke="url(#progressGradient)"
+                      strokeWidth="12"
+                      strokeLinecap="round"
+                      strokeDasharray={circleCircumference}
+                      strokeDashoffset={strokeDashoffset}
+                      transform="rotate(-90 60 60)"
+                    />
+                    <defs>
+                      <linearGradient id="progressGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stopColor="#38bdf8" />
+                        <stop offset="100%" stopColor="#fb7185" />
+                      </linearGradient>
+                    </defs>
+                  </svg>
                   <span className="text-4xl font-semibold text-white">{advisory.score}</span>
-                  <span className="-mt-8 font-mono text-[9px] uppercase tracking-[0.2em] text-white/45">Safety score</span>
                 </div>
               </div>
 
@@ -726,63 +758,99 @@ export function WeatherSafetyAdvisor() {
             <div className="flex items-center justify-between gap-4">
               <div>
                 <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-cyan-100/62">UV timeline</p>
-                <h3 className="mt-2 text-2xl font-semibold text-white">Best time to be outside</h3>
+                <h3 className="mt-2 text-2xl font-semibold text-white">Best time to go outside</h3>
+                <p className="mt-1 text-sm text-white/60">Lowest UV window appears at {forecast.best_time}. Choose the lightest exposure window for safer outdoor time.</p>
               </div>
-              <Sparkles className="size-5 text-cyan-100/70" />
             </div>
-            <div className="mt-5 grid grid-cols-5 gap-2">
-              {forecast.hourly_uv.map((item) => (
-                <div key={item.time} className="flex min-h-44 flex-col justify-end rounded-[1.2rem] border border-white/[0.08] bg-black/20 p-3">
-                  <div className="flex flex-1 items-end">
-                    <div
-                      className="w-full rounded-full bg-gradient-to-t from-cyan-300 to-orange-300"
-                      style={{ height: `${Math.max(18, item.uv * 14)}px` }}
-                    />
-                  </div>
-                  <strong className="mt-3 block text-sm text-white">UV {item.uv}</strong>
-                  <span className="mt-1 text-xs text-white/45">{item.time}</span>
+            <div className="mt-5 space-y-4">
+              <div className="rounded-[1.5rem] border border-white/[0.08] bg-black/15 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-sm text-white/70">Hourly UV levels across the day. The brightest column marks the safest outside time.</p>
+                  <span className="rounded-full border border-cyan-200/20 bg-cyan-300/10 px-3 py-1 text-xs font-semibold text-cyan-100">Best: {forecast.best_time}</span>
                 </div>
-              ))}
+                <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-5">
+                  {forecast.hourly_uv.map((item) => {
+                    const highlight = item.time === forecast.best_time;
+                    return (
+                      <div
+                        key={item.time}
+                        className={`relative flex min-h-[8rem] flex-col items-center justify-end overflow-hidden rounded-[1.3rem] border p-3 transition ${
+                          highlight
+                            ? "border-cyan-300/40 bg-cyan-300/10"
+                            : "border-white/[0.08] bg-black/20"
+                        }`}
+                      >
+                        <div className="mb-3 flex h-full w-full items-end">
+                          <div
+                            className={`mx-auto w-3 rounded-full ${highlight ? "bg-cyan-300" : "bg-gradient-to-t from-cyan-300 to-orange-300"}`}
+                            style={{ height: `${Math.max(32, item.uv * 12)}px` }}
+                          />
+                        </div>
+                        <div className="w-full text-center">
+                          <strong className="block text-sm text-white">UV {item.uv}</strong>
+                          <span className="mt-1 block text-xs text-white/45">{item.time}</span>
+                        </div>
+                        {highlight ? (
+                          <span className="mt-2 rounded-full bg-cyan-100/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-100">
+                            Best time
+                          </span>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           </article>
 
           <article className="rounded-[2rem] border border-white/[0.08] bg-white/[0.06] p-5">
-            <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-cyan-100/62">Protection plan</p>
-            <div className="mt-5 grid gap-3">
-              <div className="grid gap-3 sm:grid-cols-3">
-                <div className="rounded-[1.1rem] border border-white/[0.08] bg-black/20 p-4">
-                  <div className="flex items-center gap-2 text-cyan-100">
-                    <SunMedium className="size-4" />
-                    <p className="text-sm font-semibold text-white">Sunscreen</p>
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-cyan-100/62">Protection plan</p>
+                <h3 className="mt-2 text-2xl font-semibold text-white">What to take outside</h3>
+              </div>
+            </div>
+            <div className="mt-6 grid gap-4">
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="rounded-[1.5rem] border border-white/[0.08] bg-black/20 p-6 overflow-hidden shadow-sm shadow-cyan-300/10 flex min-h-[22rem] flex-col items-center text-center justify-between">
+                  <span className="grid h-14 w-14 place-items-center rounded-[1.1rem] bg-cyan-100/10 text-cyan-100">
+                    <SunMedium className="size-6" />
+                  </span>
+                  <div className="mt-4 space-y-3">
+                    <p className="text-sm font-semibold uppercase tracking-[0.18em] text-cyan-100/80">Sunscreen</p>
+                    <p className="text-xs leading-5 text-white/55">Shield exposed skin during the day&apos;s strongest UV.</p>
                   </div>
-                  <p className="mt-3 text-sm leading-6 text-white/72">{forecast.sunscreen_advice}</p>
+                  <p className="mt-5 text-sm leading-6 text-white/75 break-words">{forecast.sunscreen_advice}</p>
                 </div>
-                <div className="rounded-[1.1rem] border border-white/[0.08] bg-black/20 p-4">
-                  <div className="flex items-center gap-2 text-cyan-100">
-                    <Shirt className="size-4" />
-                    <p className="text-sm font-semibold text-white">What to wear</p>
+                <div className="rounded-[1.5rem] border border-white/[0.08] bg-black/20 p-6 overflow-hidden shadow-sm shadow-cyan-300/10 flex min-h-[22rem] flex-col items-center text-center justify-between">
+                  <span className="grid h-14 w-14 place-items-center rounded-[1.1rem] bg-cyan-100/10 text-cyan-100">
+                    <Shirt className="size-6" />
+                  </span>
+                  <div className="mt-4 space-y-3">
+                    <p className="text-sm font-semibold uppercase tracking-[0.18em] text-cyan-100/80">Clothing</p>
+                    <p className="text-xs leading-5 text-white/55">Layer smartly for both sun and weather comfort.</p>
                   </div>
-                  <p className="mt-3 text-sm leading-6 text-white/72">{forecast.clothing_advice}</p>
-                </div>
-                <div className="rounded-[1.1rem] border border-white/[0.08] bg-black/20 p-4">
-                  <div className="flex items-center gap-2 text-cyan-100">
-                    <Droplets className="size-4" />
-                    <p className="text-sm font-semibold text-white">Hydration</p>
-                  </div>
-                  <p className="mt-3 text-sm leading-6 text-white/72">{forecast.hydration_advice}</p>
+                  <p className="mt-5 text-sm leading-6 text-white/75 break-words">{forecast.clothing_advice}</p>
                 </div>
               </div>
-              <div className="grid gap-3">
-                {forecast.actions.map((item) => (
-                  <div key={item} className="flex items-start gap-3 rounded-[1.1rem] border border-white/[0.08] bg-black/20 p-3">
-                    <span className="grid size-10 place-items-center rounded-full bg-cyan-100/10 text-cyan-100">
-                      <ShieldCheck className="size-4" />
-                    </span>
-                    <span>
-                      <p className="text-sm text-white">{item}</p>
-                    </span>
+              <div className="rounded-[1.5rem] border border-cyan-200/10 bg-black/15 p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold uppercase tracking-[0.18em] text-cyan-100/80">Key precautions</p>
+                    <p className="mt-2 text-sm text-white/65">Top actions to keep your skin safe during today&apos;s outdoor time.</p>
                   </div>
-                ))}
+                  <span className="rounded-full bg-cyan-100/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan-100">Quick list</span>
+                </div>
+                <div className="mt-4 grid gap-3">
+                  {forecast.actions.map((item) => (
+                    <div key={item} className="flex items-start gap-3 rounded-3xl border border-white/[0.08] bg-white/5 p-4">
+                      <span className="grid h-10 w-10 flex-shrink-0 place-items-center rounded-2xl bg-cyan-100/10 text-cyan-100">
+                        <ShieldCheck className="size-4" />
+                      </span>
+                      <p className="text-sm leading-6 text-white/75">{item}</p>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           </article>
