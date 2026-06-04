@@ -315,9 +315,13 @@ function getAdvisory(
   };
 }
 
-export function WeatherSafetyAdvisor() {
-  const [city, setCity] = useState(initialForecast.city);
-  const [searchQuery, setSearchQuery] = useState(initialForecast.city);
+type WeatherSafetyAdvisorProps = {
+  initialLocation?: { name: string; latitude: number; longitude: number } | null;
+};
+
+export function WeatherSafetyAdvisor({ initialLocation }: WeatherSafetyAdvisorProps = {}) {
+  const [city, setCity] = useState(initialLocation?.name ?? initialForecast.city);
+  const [searchQuery, setSearchQuery] = useState(initialLocation?.name ?? initialForecast.city);
   const [suggestions, setSuggestions] = useState<LocationSuggestion[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [forecast, setForecast] = useState<WeatherSafetyResponse>(initialForecast);
@@ -558,7 +562,11 @@ export function WeatherSafetyAdvisor() {
   };
 
   useEffect(() => {
-    fetchWeather(city);
+    if (initialLocation) {
+      fetchWeather(initialLocation.name, { latitude: initialLocation.latitude, longitude: initialLocation.longitude });
+    } else {
+      fetchWeather(city);
+    }
   }, []);
 
   return (
