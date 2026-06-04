@@ -12,6 +12,7 @@ import {
   Flame,
   ImagePlus,
   Loader2,
+  MessageCircle,
   Microscope,
   ShieldCheck,
   Sparkles,
@@ -29,6 +30,7 @@ const signalCards = [
 ];
 
 type Prediction = {
+  report_id: string;
   predicted_class: string;
   malignant_probability: number;
   benign_probability: number;
@@ -126,6 +128,10 @@ export default function ShaderShowcase() {
     return payload as T;
   };
 
+  const rememberReport = (payload: Prediction) => {
+    window.localStorage.setItem("dermoscan.latestReportId", payload.report_id);
+  };
+
   const analyzeFile = async () => {
     if (!selectedFile) {
       inputRef.current?.click();
@@ -138,7 +144,9 @@ export default function ShaderShowcase() {
     setHeatmapImage(null);
 
     try {
-      setPrediction(await requestPrediction("predict"));
+      const payload = await requestPrediction("predict");
+      setPrediction(payload);
+      rememberReport(payload);
     } catch (error) {
       setUploadError(error instanceof Error ? error.message : "Could not reach the DermoScan backend.");
     } finally {
@@ -155,6 +163,7 @@ export default function ShaderShowcase() {
     try {
       const payload = await requestPrediction<HeatmapPrediction>("predict-with-heatmap");
       setPrediction(payload);
+      rememberReport(payload);
       setHeatmapImage(payload.heatmap_image);
     } catch (error) {
       setUploadError(error instanceof Error ? error.message : "Could not load the Grad-CAM heatmap.");
@@ -445,7 +454,7 @@ export default function ShaderShowcase() {
                   </div>
                 ) : null}
 
-                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <div className="mt-4 grid gap-3 sm:grid-cols-3">
                   <motion.button
                     type="button"
                     onClick={analyzeFile}
@@ -468,6 +477,16 @@ export default function ShaderShowcase() {
                     {isHeatmapLoading ? <Loader2 className="size-4 animate-spin" /> : <Eye className="size-4" />}
                     {heatmapImage ? "Refresh heatmap" : "View heatmap"}
                   </motion.button>
+                  <Link
+                    href={prediction ? `/chat?reportId=${prediction.report_id}` : "/chat"}
+                    className={`inline-flex min-h-12 items-center justify-center gap-2 rounded-full border border-white/20 bg-white/10 px-6 text-sm font-semibold text-white/85 no-underline transition hover:border-cyan-200/45 hover:bg-white/20 ${
+                      prediction ? "" : "pointer-events-none opacity-45"
+                    }`}
+                    aria-disabled={!prediction}
+                  >
+                    <MessageCircle className="size-4" />
+                    Ask report
+                  </Link>
                 </div>
               </div>
             </motion.section>

@@ -1,3 +1,7 @@
 /** @type {import('next').NextConfig} */
-const nextConfig = {};
+const nextConfig = {
+  experimental: {
+    useWasmBinary: true,
+  },
+};
 export default nextConfig;

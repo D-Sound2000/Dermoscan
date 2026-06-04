@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { ScanLine } from 'lucide-react';
+import { MessageCircle, ScanLine } from 'lucide-react';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { MenuToggleIcon } from '@/components/ui/menu-toggle-icon';
@@ -10,19 +10,19 @@ import { useScroll } from '@/components/ui/use-scroll';
 const links = [
   {
     label: 'Overview',
-    href: '#overview',
+    href: '/#overview',
   },
   {
     label: 'Scan',
-    href: '#scan',
+    href: '/#scan',
   },
   {
     label: 'Results',
-    href: '#results',
+    href: '/#results',
   },
   {
     label: 'Signals',
-    href: '#signals',
+    href: '/#signals',
   },
 ];
 
@@ -67,7 +67,7 @@ export function Header() {
           },
         )}
       >
-        <a href="#overview" onClick={closeMenu} className="flex min-w-0 items-center gap-3 text-white no-underline" aria-label="DermoScan home">
+        <a href="/" onClick={closeMenu} className="flex min-w-0 items-center gap-3 text-white no-underline" aria-label="DermoScan home">
           <span className={cn('grid place-items-center rounded-full border border-white/10 bg-white/10 text-cyan-100 shadow-inner shadow-white/10 transition-[width,height] duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]', scrolled ? 'size-9' : 'size-11')}>
             <ScanLine className="size-4" />
           </span>
@@ -91,6 +91,17 @@ export function Header() {
             </a>
           ))}
         </div>
+
+        <a
+          href="/chat"
+          className={cn(
+            buttonVariants({ variant: 'default' }),
+            'hidden h-10 items-center gap-2 rounded-full bg-gradient-to-r from-cyan-500 to-orange-500 px-4 text-sm font-semibold text-white no-underline shadow-lg shadow-cyan-950/30 hover:from-cyan-400 hover:to-orange-400 md:inline-flex',
+          )}
+        >
+          <MessageCircle className="size-4" />
+          Ask report
+        </a>
 
         <Button size="icon" variant="outline" onClick={() => setOpen(!open)} className="rounded-full border-white/15 bg-white/10 text-white md:hidden" aria-label={open ? 'Close menu' : 'Open menu'} aria-expanded={open}>
           <MenuToggleIcon open={open} className="size-5" duration={300} />
@@ -125,6 +136,18 @@ export function Header() {
                 {link.label}
               </a>
             ))}
+            <a
+              onClick={closeMenu}
+              className={buttonVariants({
+                variant: 'default',
+                className:
+                  'h-auto justify-start rounded-2xl bg-gradient-to-r from-cyan-500 to-orange-500 px-4 py-4 text-base font-semibold text-white no-underline hover:from-cyan-400 hover:to-orange-400',
+              })}
+              href="/chat"
+            >
+              <MessageCircle className="mr-2 size-5" />
+              Ask report
+            </a>
           </div>
         </div>
       </div>

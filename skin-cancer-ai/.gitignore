@@ -21,9 +21,11 @@ data/
 .ipynb_checkpoints/
 
 # Node
+.dermoscan-*.log
 frontend/node_modules/
 frontend/.next/
 frontend/.codex-*.log
+frontend/.dermoscan-*.log
 
 # OS
 .DS_Store
@@ -32,3 +34,5 @@ Thumbs.db
 # Env
 .env
 .env.local
+frontend/.env
+frontend/.env.local
