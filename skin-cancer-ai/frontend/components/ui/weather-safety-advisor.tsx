@@ -9,7 +9,6 @@ import {
   Shirt,
   ShieldCheck,
   SunMedium,
-  ThermometerSun,
   Umbrella,
   Wind,
 } from "lucide-react";
@@ -83,56 +82,88 @@ function _weatherCodeLabel(code: number) {
   return labels[code] ?? "Mixed conditions";
 }
 
-function getProtectionActions(uvIndex: number) {
-  if (uvIndex >= 8) {
-    return [
-      "Avoid direct sun during peak UV hours",
-      "Use broad-spectrum SPF 50 and reapply every 2 hours",
-      "Wear a wide-brim hat, UV sunglasses, and UPF clothing",
-    ];
-  }
+const BURN_TIME_FACTORS: number[] = [0, 0.5, 0.75, 1.1, 1.8, 2.8, 4.5];
 
-  if (uvIndex >= 6) {
-    return [
-      "Use broad-spectrum SPF 30+",
-      "Wear a hat, sunglasses, and light long sleeves",
-      "Seek shade around midday",
-    ];
-  }
-
-  if (uvIndex >= 3) {
-    return [
-      "Apply SPF 30+ before longer outdoor activity",
-      "Bring sunglasses or a cap",
-      "Check exposed skin after extended sun exposure",
-    ];
-  }
-
-  return [
-    "Use sunscreen for long outings",
-    "Hydrate and monitor heat comfort",
-    "Keep routine skin self-checks",
-  ];
+function calculateBurnTime(uvIndex: number, skinType: number): number | null {
+  if (uvIndex <= 0) return null;
+  const factor = BURN_TIME_FACTORS[skinType] ?? 1.1;
+  return Math.round((200 / uvIndex) * factor);
 }
 
-function getSunscreenAdvice(uvIndex: number) {
-  if (uvIndex >= 11) {
-    return "Use SPF 50+ broad-spectrum sunscreen, reapply every 2 hours, and limit sun exposure.";
+function getProtectionActions(uvIndex: number, skinType: number = 3, timeOutside: number = 60): string[] {
+  const burnTime = calculateBurnTime(uvIndex, skinType);
+  const reapplyMin = skinType <= 2 ? 60 : skinType <= 4 ? 80 : 110;
+  const actions: string[] = [];
+
+  if (burnTime !== null && uvIndex >= 3) {
+    actions.push(
+      `At UV ${uvIndex.toFixed(1)}, skin type ${skinType} burns unprotected in ~${burnTime} min — apply sunscreen before leaving home`,
+    );
+  } else {
+    actions.push(`UV is low right now — SPF 15+ on exposed areas covers you for most outings`);
   }
 
   if (uvIndex >= 8) {
-    return "Choose SPF 50+ and reapply often; seek shade during the strongest midday sun.";
+    actions.push(`Set a ${reapplyMin}-min phone timer to reapply sunscreen — skin damage starts before you feel any burning`);
+    actions.push(`A wide-brim hat blocks ~70% of UV reaching your face and neck; UV400 sunglasses prevent cumulative eye damage`);
+  } else if (uvIndex >= 6) {
+    actions.push(`Reapply SPF 30+ every ${reapplyMin} min — or immediately after sweating or any water contact`);
+    actions.push(`Even brief shade breaks reduce your total UV dose significantly — aim for shade between 11 AM and 3 PM`);
+  } else if (uvIndex >= 3) {
+    actions.push(`Apply sunscreen 15 min before going out — it needs time to bond to skin before it starts protecting you`);
+    actions.push(`UV400 sunglasses reduce long-term cataract risk even on partly cloudy days (clouds pass up to 80% of UV)`);
+  } else {
+    actions.push(`Routine SPF 15 on exposed skin is sufficient for today's UV level`);
+    actions.push(`Cloud cover can drop rapidly — recheck UV if conditions change`);
   }
 
-  if (uvIndex >= 6) {
-    return "Use SPF 30+ broad-spectrum sunscreen and reapply after sweating or swimming.";
+  if (timeOutside >= 120) {
+    const waterOz = Math.ceil(timeOutside / 20) * 8;
+    actions.push(
+      `For ${timeOutside >= 240 ? "4+" : "2+"} hrs outside: pre-hydrate with 16 oz before leaving and bring at least ${waterOz} oz of water`,
+    );
+  } else {
+    const waterOz = timeOutside <= 30 ? 8 : 16;
+    actions.push(
+      `Bring at least ${waterOz} oz of water for a ${timeOutside}-min outing — thirst is a late signal of dehydration`,
+    );
   }
 
+  return actions.slice(0, 3);
+}
+
+function getSunscreenAdvice(uvIndex: number, skinType: number = 3): string {
+  const reapplyMin = skinType <= 2 ? "60–80" : skinType <= 4 ? "80–90" : "90–110";
+  const sensitive = skinType <= 2;
+  const moderate = skinType <= 4;
+
+  if (sensitive) {
+    if (uvIndex >= 8) {
+      return `SPF 50+ is critical for your skin type — apply 15 min before going out and reapply every ${reapplyMin} min. Don't skip ears, back of neck, or the part in your hair.`;
+    }
+    if (uvIndex >= 3) {
+      return `Fair skin (type ${skinType}) burns quickly — use SPF 50 and reapply every ${reapplyMin} min. Include lips with an SPF lip balm.`;
+    }
+    return `Even at low UV, SPF 30+ is recommended for skin type ${skinType}. Apply 15 min before any outdoor exposure.`;
+  }
+
+  if (moderate) {
+    if (uvIndex >= 8) {
+      return `SPF 50+ on all exposed skin. Reapply every ${reapplyMin} min — commonly missed: ears, back of hands, and the hairline.`;
+    }
+    if (uvIndex >= 3) {
+      return `SPF 30+ applied 15 min before going out. Reapply every ${reapplyMin} min, or sooner after sweating. SPF 50 is better for extended outings.`;
+    }
+    return `SPF 15–30 is sufficient for brief, incidental sun exposure today.`;
+  }
+
+  if (uvIndex >= 8) {
+    return `SPF 30+ is still important — UV radiation causes long-term cell damage regardless of visible burning. Reapply every ${reapplyMin} min.`;
+  }
   if (uvIndex >= 3) {
-    return "Apply SPF 30 on exposed skin before spending over 20 minutes outdoors.";
+    return `SPF 15–30 on exposed areas. Even deeply pigmented skin accumulates UV damage over time — especially on the face and hands.`;
   }
-
-  return "Use daily protection like SPF 15+ on exposed skin when spending extended time outside.";
+  return `SPF 15 on face and neck for extended outings. UV causes gradual collagen breakdown regardless of skin tone.`;
 }
 
 function getClothingAdvice(
@@ -167,16 +198,29 @@ function getClothingAdvice(
   return `Wear ${clothing.join(", ")} for the current conditions.`;
 }
 
-function getHydrationAdvice(temperature: number, humidity: number) {
-  if (temperature >= 90 || humidity >= 75) {
-    return "Drink water regularly, avoid peak heat hours, and take frequent shade breaks.";
+function getHydrationAdvice(temperature: number, humidity: number, timeOutside: number = 60): string {
+  let intervalMin: number;
+  let amount: string;
+
+  if (temperature >= 95 || (temperature >= 85 && humidity >= 65)) {
+    intervalMin = 20;
+    amount = "8–10 oz (1 cup)";
+  } else if (temperature >= 85) {
+    intervalMin = 30;
+    amount = "8 oz (1 cup)";
+  } else if (temperature >= 75) {
+    intervalMin = 40;
+    amount = "8 oz";
+  } else {
+    intervalMin = 60;
+    amount = "6–8 oz";
   }
 
-  if (temperature >= 80) {
-    return "Stay hydrated and rest in shade during longer outdoor sessions.";
-  }
+  const parts: string[] = [`Drink ${amount} every ${intervalMin} min while outside.`];
+  if (timeOutside >= 60) parts.push(`Pre-hydrate with 16 oz before leaving.`);
+  if (timeOutside >= 120) parts.push(`After 2+ hrs, add a sports drink or electrolyte packet — water alone doesn't replace lost sodium.`);
 
-  return "Keep water available and stay mindful of comfort during outdoor activity.";
+  return parts.join(" ");
 }
 
 function chooseBestOutdoorWindow(times: string[], uvValues: number[]) {
@@ -246,6 +290,8 @@ function getAdvisory(
   windMph: number,
   hour: number,
   airQualityIndex?: number,
+  skinType: number = 3,
+  timeOutside: number = 60,
 ) {
   const uvPenalty = Math.min(uvIndex * 7.8, 70);
   const heatPenalty = temperature >= 95 ? 16 : temperature >= 88 ? 10 : temperature >= 80 ? 6 : temperature >= 72 ? 3 : 0;
@@ -262,8 +308,10 @@ function getAdvisory(
         : airQualityIndex >= 50
           ? 3
           : 0;
+  const skinPenalty = ([0, 20, 12, 5, 0, -4, -8] as number[])[skinType] ?? 0;
+  const timePenalty = timeOutside <= 15 ? 0 : timeOutside <= 60 ? 4 : timeOutside <= 120 ? 10 : 18;
 
-  const rawScore = 100 - uvPenalty - heatPenalty - humidityPenalty - middayPenalty - airQualityPenalty + cloudBonus + windBonus;
+  const rawScore = 100 - uvPenalty - heatPenalty - humidityPenalty - middayPenalty - airQualityPenalty + cloudBonus + windBonus - skinPenalty - timePenalty;
   const score = Math.max(10, Math.min(98, Math.round(rawScore)));
 
   if (uvIndex >= 11 || score <= 30) {
@@ -317,9 +365,17 @@ function getAdvisory(
 
 type WeatherSafetyAdvisorProps = {
   initialLocation?: { name: string; latitude: number; longitude: number } | null;
+  skinType?: number | null;
 };
 
-export function WeatherSafetyAdvisor({ initialLocation }: WeatherSafetyAdvisorProps = {}) {
+const TIME_OUTSIDE_OPTIONS = [
+  { value: 15, label: "15 min" },
+  { value: 60, label: "1 hr" },
+  { value: 120, label: "2 hrs" },
+  { value: 240, label: "4+ hrs" },
+] as const;
+
+export function WeatherSafetyAdvisor({ initialLocation, skinType }: WeatherSafetyAdvisorProps = {}) {
   const [city, setCity] = useState(initialLocation?.name ?? initialForecast.city);
   const [searchQuery, setSearchQuery] = useState(initialLocation?.name ?? initialForecast.city);
   const [suggestions, setSuggestions] = useState<LocationSuggestion[]>([]);
@@ -328,7 +384,10 @@ export function WeatherSafetyAdvisor({ initialLocation }: WeatherSafetyAdvisorPr
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [unit, setUnit] = useState<"F" | "C">("F");
+  const [timeOutside, setTimeOutside] = useState(60);
   const reduceMotion = useReducedMotion();
+
+  const resolvedSkinType = skinType ?? 3;
 
   const advisory = useMemo(
     () => getAdvisory(
@@ -339,8 +398,15 @@ export function WeatherSafetyAdvisor({ initialLocation }: WeatherSafetyAdvisorPr
       forecast.wind_mph,
       new Date().getHours(),
       forecast.air_quality_index,
+      resolvedSkinType,
+      timeOutside,
     ),
-    [forecast],
+    [forecast, resolvedSkinType, timeOutside],
+  );
+
+  const burnTime = useMemo(
+    () => calculateBurnTime(forecast.uv_index, resolvedSkinType),
+    [forecast.uv_index, resolvedSkinType],
   );
   const displayTemp = unit === "F" ? forecast.temperature : Math.round((forecast.temperature - 32) * (5 / 9));
   const displayFeelsLike = unit === "F" ? forecast.feels_like : Math.round((forecast.feels_like - 32) * (5 / 9));
@@ -467,10 +533,10 @@ export function WeatherSafetyAdvisor({ initialLocation }: WeatherSafetyAdvisorPr
                 ? "Unhealthy"
                 : "Very Unhealthy";
 
-      const advisoryData = getAdvisory(currentUv, temperature, cloudCover, humidity, windMph, currentHour, airQualityIndex);
-      const sunscreenAdvice = getSunscreenAdvice(currentUv);
+      const advisoryData = getAdvisory(currentUv, temperature, cloudCover, humidity, windMph, currentHour, airQualityIndex, resolvedSkinType, timeOutside);
+      const sunscreenAdvice = getSunscreenAdvice(currentUv, resolvedSkinType);
       const clothingAdvice = getClothingAdvice(temperature, currentUv, condition);
-      const hydrationAdvice = getHydrationAdvice(temperature, humidity);
+      const hydrationAdvice = getHydrationAdvice(temperature, humidity, timeOutside);
 
       const sampleIndexes = [9, 11, 13, 15, 17];
       const hourlyUv = sampleIndexes
@@ -503,7 +569,7 @@ export function WeatherSafetyAdvisor({ initialLocation }: WeatherSafetyAdvisorPr
         skin_safety_score: advisoryData.score,
         verdict: advisoryData.verdict,
         recommendation: advisoryData.summary,
-        actions: getProtectionActions(currentUv),
+        actions: getProtectionActions(currentUv, resolvedSkinType, timeOutside),
         hourly_uv: hourlyUv,
       });
     } catch (err) {
@@ -569,173 +635,137 @@ export function WeatherSafetyAdvisor({ initialLocation }: WeatherSafetyAdvisorPr
     }
   }, []);
 
+  useEffect(() => {
+    setForecast((prev) => ({
+      ...prev,
+      sunscreen_advice: getSunscreenAdvice(prev.uv_index, resolvedSkinType),
+      hydration_advice: getHydrationAdvice(prev.temperature, prev.humidity, timeOutside),
+      actions: getProtectionActions(prev.uv_index, resolvedSkinType, timeOutside),
+    }));
+  }, [timeOutside, resolvedSkinType]);
+
   return (
     <section id="safety" className="relative overflow-hidden bg-[#020303] px-5 py-20 text-[#f5fbfa] md:px-8">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_8%,rgba(34,211,238,0.14),transparent_32%),radial-gradient(circle_at_82%_20%,rgba(249,115,22,0.13),transparent_30%)]" />
-      <div className="relative mx-auto grid w-full max-w-6xl gap-6">
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,0.92fr)_minmax(22rem,0.58fr)] lg:items-end">
-          <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.06] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.2em] text-cyan-100/70">
-              <SunMedium className="size-3.5" />
-              UV & Skin Safety
-            </div>
-            <h2 className="mt-5 max-w-3xl text-4xl font-semibold tracking-normal text-white md:text-6xl">
-              Check today&apos;s outdoor skin risk before you head out.
-            </h2>
-            <p className="mt-4 max-w-2xl text-base leading-7 text-white/62">
-              Weather, UV intensity, and heat are translated into a simple safety score and protection plan.
-            </p>
-          </div>
+      <div className="relative mx-auto w-full max-w-6xl space-y-10">
 
-          <div className="rounded-[1.5rem] border border-white/[0.08] bg-white/[0.06] p-3">
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <div className="flex flex-1 items-center gap-2 rounded-[1.15rem] border border-white/[0.08] bg-black/25 px-3 py-2">
-                <MapPin className="size-4 text-cyan-100/70" />
-                <div className="relative flex-1">
-                  <input
-                    value={searchQuery}
-                    onChange={(event) => {
-                      setSearchQuery(event.target.value);
-                      setShowSuggestions(true);
-                    }}
-                    onFocus={() => setShowSuggestions(true)}
-                    aria-label="Weather location"
-                    placeholder="San Jose, CA"
-                    className="min-w-0 w-full bg-transparent text-sm text-white outline-none placeholder:text-white/35"
-                  />
-                  {showSuggestions && suggestions.length > 0 ? (
-                    <div className="absolute inset-x-0 top-full z-20 mt-1 max-h-72 overflow-auto rounded-3xl border border-white/[0.08] bg-[#020303]/95 p-2 shadow-2xl shadow-black/40">
-                      {suggestions.map((item) => {
-                        const label = [item.name, item.admin1, item.country_code].filter(Boolean).join(", ");
-                        return (
-                          <button
-                            key={label}
-                            type="button"
-                            onMouseDown={() => handleSelectSuggestion(item)}
-                            className="w-full rounded-2xl px-3 py-2 text-left text-sm text-white/80 transition hover:bg-white/10 hover:text-white"
-                          >
-                            {label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  ) : null}
-                </div>
+        {/* Controls */}
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="relative flex min-w-[200px] flex-1 items-center gap-2 rounded-[1.15rem] border border-white/[0.08] bg-white/[0.05] px-3 py-2.5">
+              <MapPin className="size-4 flex-shrink-0 text-cyan-100/50" />
+              <div className="relative flex-1">
+                <input
+                  value={searchQuery}
+                  onChange={(event) => {
+                    setSearchQuery(event.target.value);
+                    setShowSuggestions(true);
+                  }}
+                  onFocus={() => setShowSuggestions(true)}
+                  aria-label="Weather location"
+                  placeholder="City, Region"
+                  className="min-w-0 w-full bg-transparent text-sm text-white outline-none placeholder:text-white/30"
+                />
+                {showSuggestions && suggestions.length > 0 ? (
+                  <div className="absolute inset-x-0 top-full z-20 mt-1 max-h-72 overflow-auto rounded-3xl border border-white/[0.08] bg-[#020303]/95 p-2 shadow-2xl shadow-black/40">
+                    {suggestions.map((item) => {
+                      const label = [item.name, item.admin1, item.country_code].filter(Boolean).join(", ");
+                      return (
+                        <button
+                          key={label}
+                          type="button"
+                          onMouseDown={() => handleSelectSuggestion(item)}
+                          className="w-full rounded-2xl px-3 py-2 text-left text-sm text-white/80 transition hover:bg-white/10 hover:text-white"
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                onClick={() => fetchWeather(searchQuery)}
+                disabled={isLoading}
+                className="rounded-full bg-cyan-400/15 px-3 py-1 text-xs font-semibold text-cyan-200 transition hover:bg-cyan-400/25 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {isLoading ? "…" : "Update"}
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 rounded-full border border-white/[0.08] bg-white/[0.05] p-1">
+              {(["F", "C"] as const).map((option) => (
                 <button
+                  key={option}
                   type="button"
-                  onClick={() => fetchWeather(searchQuery)}
-                  disabled={isLoading}
-                  className="rounded-full border border-cyan-200/20 bg-cyan-200/10 px-3 py-1 text-xs font-semibold text-cyan-100 transition hover:bg-cyan-200/15 disabled:cursor-not-allowed disabled:opacity-50"
+                  onClick={() => setUnit(option)}
+                  className={`h-8 rounded-full px-4 text-xs font-semibold transition ${
+                    unit === option ? "bg-cyan-200 text-slate-950" : "text-white/50 hover:text-white"
+                  }`}
                 >
-                  {isLoading ? "Updating…" : "Update"}
+                  °{option}
                 </button>
-              </div>
-
-              <div className="grid grid-cols-2 rounded-full border border-white/[0.08] bg-white/[0.06] p-1">
-                {(["F", "C"] as const).map((option) => (
-                  <button
-                    key={option}
-                    type="button"
-                    onClick={() => setUnit(option)}
-                    className={`h-8 rounded-full px-3 text-xs font-semibold transition ${
-                      unit === option ? "bg-cyan-200 text-slate-950" : "text-white/58 hover:text-white"
-                    }`}
-                  >
-                    °{option}
-                  </button>
-                ))}
-              </div>
+              ))}
             </div>
-            {error ? (
-              <p className="mt-3 text-sm text-amber-200">{error}</p>
-            ) : (
-              <p className="mt-3 text-sm text-white/60">Live weather from Open-Meteo for your selected city.</p>
-            )}
           </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-white/35">Time outside:</span>
+            {TIME_OUTSIDE_OPTIONS.map(({ value, label }) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setTimeOutside(value)}
+                className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+                  timeOutside === value
+                    ? "bg-cyan-200 text-slate-950"
+                    : "border border-white/[0.08] bg-white/[0.03] text-white/45 hover:text-white"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {error && <p className="text-sm text-amber-300/80">{error}</p>}
         </div>
 
-        <div className="grid gap-5 lg:grid-cols-[minmax(20rem,0.72fr)_minmax(0,1fr)]">
+        {/* Score + Weather — equal two columns */}
+        <div className="grid gap-5 lg:grid-cols-2">
           <motion.article
-            className="relative overflow-hidden rounded-[2rem] border border-white/[0.08] bg-white/[0.08] p-5 shadow-2xl shadow-black/30"
+            className="rounded-[2rem] border border-white/[0.08] bg-white/[0.08] p-6 shadow-2xl shadow-black/30"
             initial={{ opacity: 0, y: 18 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: "-80px" }}
             transition={{ duration: reduceMotion ? 0 : 0.65, ease: [0.16, 1, 0.3, 1] }}
           >
-            <div className="absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-cyan-200/55 to-transparent" />
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-cyan-100/62">Current weather</p>
-                <h3 className="mt-3 text-5xl font-semibold text-white">
-                  {displayTemp}°{unit}
-                </h3>
-                <p className="mt-2 text-sm text-white/58">
-                  Feels like {displayFeelsLike}°{unit} · {forecast.condition}
-                </p>
+            <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-cyan-100/62">Skin safety score</p>
+            <div className="mt-4 flex items-center gap-5">
+              <div className="relative grid size-28 flex-shrink-0 place-items-center">
+                <div className={`absolute inset-0 rounded-full bg-gradient-to-br ${advisory.tone} opacity-15`} />
+                <svg className="absolute inset-0 h-full w-full" viewBox="0 0 120 120">
+                  <circle cx="60" cy="60" r="52" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="12" />
+                  <circle
+                    cx="60" cy="60" r="52" fill="none"
+                    stroke="url(#progressGradient)"
+                    strokeWidth="12"
+                    strokeLinecap="round"
+                    strokeDasharray={circleCircumference}
+                    strokeDashoffset={strokeDashoffset}
+                    transform="rotate(-90 60 60)"
+                  />
+                  <defs>
+                    <linearGradient id="progressGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="#38bdf8" />
+                      <stop offset="100%" stopColor="#fb7185" />
+                    </linearGradient>
+                  </defs>
+                </svg>
+                <span className="relative text-3xl font-semibold text-white">{advisory.score}</span>
               </div>
-              <div className="grid size-16 place-items-center rounded-full border border-cyan-100/20 bg-cyan-100/10 text-cyan-100">
-                <CloudSun className="size-8" />
-              </div>
-            </div>
-
-            <div className="mt-6 grid grid-cols-3 gap-2">
-              <WeatherMetric icon={Droplets} label="Humidity" value={`${forecast.humidity}%`} />
-              <WeatherMetric icon={Wind} label="Wind" value={`${forecast.wind_mph} mph`} />
-              <WeatherMetric icon={Umbrella} label="Clouds" value={`${forecast.cloud_cover}%`} />
-            </div>
-          </motion.article>
-
-          <motion.article
-            className="rounded-[2rem] border border-white/[0.08] bg-white/[0.08] p-5 shadow-2xl shadow-black/30"
-            initial={{ opacity: 0, y: 18 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: "-80px" }}
-            transition={{ duration: reduceMotion ? 0 : 0.65, delay: 0.08, ease: [0.16, 1, 0.3, 1] }}
-          >
-            <div className="grid gap-5 md:grid-cols-[12rem_1fr]">
-              <div className="relative grid aspect-square place-items-center rounded-full border border-white/[0.08] bg-black/25 p-3">
-                <div className="absolute inset-x-0 top-0 -translate-y-3/4 text-center text-[11px] uppercase tracking-[0.2em] text-white/45">
-                  Safety score
-                </div>
-                <div
-                  className={`absolute inset-3 rounded-full bg-gradient-to-br ${advisory.tone} opacity-90`}
-                  style={{ clipPath: `polygon(50% 50%, 50% 0, ${50 + advisory.score / 2}% 0, 100% 100%, 0 100%)` }}
-                />
-                <div className="relative grid size-32 place-items-center rounded-full border border-white/[0.12] bg-[#020303] text-center">
-                  <svg className="absolute inset-0 h-full w-full" viewBox="0 0 120 120">
-                    <circle
-                      cx="60"
-                      cy="60"
-                      r="52"
-                      fill="none"
-                      stroke="rgba(255,255,255,0.08)"
-                      strokeWidth="12"
-                    />
-                    <circle
-                      cx="60"
-                      cy="60"
-                      r="52"
-                      fill="none"
-                      stroke="url(#progressGradient)"
-                      strokeWidth="12"
-                      strokeLinecap="round"
-                      strokeDasharray={circleCircumference}
-                      strokeDashoffset={strokeDashoffset}
-                      transform="rotate(-90 60 60)"
-                    />
-                    <defs>
-                      <linearGradient id="progressGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                        <stop offset="0%" stopColor="#38bdf8" />
-                        <stop offset="100%" stopColor="#fb7185" />
-                      </linearGradient>
-                    </defs>
-                  </svg>
-                  <span className="text-4xl font-semibold text-white">{advisory.score}</span>
-                </div>
-              </div>
-
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap gap-2">
                   <span className="rounded-full border border-white/[0.08] bg-white/[0.08] px-3 py-1 text-xs font-semibold text-white/72">
                     UV {forecast.uv_index.toFixed(1)}
                   </span>
@@ -748,121 +778,155 @@ export function WeatherSafetyAdvisor({ initialLocation }: WeatherSafetyAdvisorPr
                     </span>
                   ) : null}
                 </div>
-                <h3 className="mt-4 text-3xl font-semibold text-white">{advisory.verdict}</h3>
-                <p className="mt-3 text-sm leading-6 text-white/62">{advisory.summary}</p>
-                <div className="mt-5 rounded-[1.2rem] border border-white/[0.08] bg-black/20 p-4">
-                  <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-cyan-100/55">Peak exposure</p>
-                  <p className="mt-2 text-sm text-white/72">Avoid prolonged direct sun from {forecast.peak_window}.</p>
-                  <p className="mt-2 text-sm text-white/72">Best time to go outside: {forecast.best_time}.</p>
-                  <p className="mt-2 text-sm text-white/72">Lower UV window: {forecast.best_outdoor_window}.</p>
-                </div>
+                <h3 className="mt-3 text-2xl font-semibold text-white">{advisory.verdict}</h3>
+                <p className="mt-2 text-sm leading-6 text-white/62">{advisory.summary}</p>
               </div>
+            </div>
+            <div className="mt-4 space-y-1.5 border-t border-white/[0.06] pt-4">
+              <p className="text-sm text-white/55">
+                Peak UV: <strong className="text-white/80">{forecast.peak_window}</strong>
+                {" · "}Best window: <strong className="text-white/80">{forecast.best_time}</strong>
+              </p>
+              {burnTime !== null && forecast.uv_index >= 3 && (
+                <p className="text-sm text-amber-300/75">
+                  Unprotected burn time (type {resolvedSkinType}):{" "}
+                  <strong className="text-amber-200">~{burnTime} min</strong>
+                </p>
+              )}
+            </div>
+          </motion.article>
+
+          <motion.article
+            className="relative overflow-hidden rounded-[2rem] border border-white/[0.08] bg-white/[0.08] p-6 shadow-2xl shadow-black/30"
+            initial={{ opacity: 0, y: 18 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-80px" }}
+            transition={{ duration: reduceMotion ? 0 : 0.65, delay: 0.08, ease: [0.16, 1, 0.3, 1] }}
+          >
+            <div className="absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-cyan-200/55 to-transparent" />
+            <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-cyan-100/62">Current weather</p>
+            <div className="mt-4 flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-5xl font-semibold text-white">
+                  {displayTemp}°{unit}
+                </h3>
+                <p className="mt-2 text-sm text-white/58">
+                  Feels like {displayFeelsLike}°{unit} · {forecast.condition}
+                </p>
+              </div>
+              <div className="grid size-14 place-items-center rounded-full border border-cyan-100/20 bg-cyan-100/10 text-cyan-100">
+                <CloudSun className="size-7" />
+              </div>
+            </div>
+            <div className="mt-6 grid grid-cols-3 gap-3">
+              <WeatherMetric icon={Droplets} label="Humidity" value={`${forecast.humidity}%`} />
+              <WeatherMetric icon={Wind} label="Wind" value={`${forecast.wind_mph} mph`} />
+              <WeatherMetric icon={Umbrella} label="Clouds" value={`${forecast.cloud_cover}%`} />
             </div>
           </motion.article>
         </div>
 
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(20rem,0.48fr)]">
-          <article className="rounded-[2rem] border border-white/[0.08] bg-white/[0.06] p-5">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-cyan-100/62">UV timeline</p>
-                <h3 className="mt-2 text-2xl font-semibold text-white">Best time to go outside</h3>
-                <p className="mt-1 text-sm text-white/60">Lowest UV window appears at {forecast.best_time}. Choose the lightest exposure window for safer outdoor time.</p>
-              </div>
+        {/* UV Timeline — full width */}
+        <article className="rounded-[2rem] border border-white/[0.08] bg-white/[0.06] p-6">
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-cyan-100/62">UV timeline</p>
+              <h3 className="mt-1.5 text-xl font-semibold text-white">Hourly UV levels</h3>
             </div>
-            <div className="mt-5 space-y-4">
-              <div className="rounded-[1.5rem] border border-white/[0.08] bg-black/15 p-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <p className="text-sm text-white/70">Hourly UV levels across the day. The brightest column marks the safest outside time.</p>
-                  <span className="rounded-full border border-cyan-200/20 bg-cyan-300/10 px-3 py-1 text-xs font-semibold text-cyan-100">Best: {forecast.best_time}</span>
+            <span className="rounded-full border border-cyan-200/20 bg-cyan-300/10 px-3 py-1 text-xs font-semibold text-cyan-100">
+              Best: {forecast.best_time}
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+            {forecast.hourly_uv.map((item) => {
+              const highlight = item.time === forecast.best_time;
+              return (
+                <div
+                  key={item.time}
+                  className={`relative flex min-h-[8rem] flex-col items-center justify-end overflow-hidden rounded-[1.3rem] border p-3 transition ${
+                    highlight
+                      ? "border-cyan-300/40 bg-cyan-300/10"
+                      : "border-white/[0.08] bg-black/20"
+                  }`}
+                >
+                  <div className="mb-3 flex h-full w-full items-end">
+                    <div
+                      className={`mx-auto w-3 rounded-full ${highlight ? "bg-cyan-300" : "bg-gradient-to-t from-cyan-300 to-orange-300"}`}
+                      style={{ height: `${Math.max(32, item.uv * 12)}px` }}
+                    />
+                  </div>
+                  <div className="w-full text-center">
+                    <strong className="block text-sm text-white">UV {item.uv}</strong>
+                    <span className="mt-1 block text-xs text-white/45">{item.time}</span>
+                  </div>
+                  {highlight ? (
+                    <span className="mt-2 rounded-full bg-cyan-100/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-100">
+                      Best time
+                    </span>
+                  ) : null}
                 </div>
-                <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-5">
-                  {forecast.hourly_uv.map((item) => {
-                    const highlight = item.time === forecast.best_time;
-                    return (
-                      <div
-                        key={item.time}
-                        className={`relative flex min-h-[8rem] flex-col items-center justify-end overflow-hidden rounded-[1.3rem] border p-3 transition ${
-                          highlight
-                            ? "border-cyan-300/40 bg-cyan-300/10"
-                            : "border-white/[0.08] bg-black/20"
-                        }`}
-                      >
-                        <div className="mb-3 flex h-full w-full items-end">
-                          <div
-                            className={`mx-auto w-3 rounded-full ${highlight ? "bg-cyan-300" : "bg-gradient-to-t from-cyan-300 to-orange-300"}`}
-                            style={{ height: `${Math.max(32, item.uv * 12)}px` }}
-                          />
-                        </div>
-                        <div className="w-full text-center">
-                          <strong className="block text-sm text-white">UV {item.uv}</strong>
-                          <span className="mt-1 block text-xs text-white/45">{item.time}</span>
-                        </div>
-                        {highlight ? (
-                          <span className="mt-2 rounded-full bg-cyan-100/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-100">
-                            Best time
-                          </span>
-                        ) : null}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          </article>
+              );
+            })}
+          </div>
+        </article>
 
-          <article className="rounded-[2rem] border border-white/[0.08] bg-white/[0.06] p-5">
-            <div className="flex items-center justify-between gap-4">
+        {/* Protection Plan — 3 equal columns */}
+        <div>
+          <div className="mb-6">
+            <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-cyan-100/62">Protection plan</p>
+            <h3 className="mt-2 text-2xl font-semibold text-white">What to take outside</h3>
+          </div>
+          <div className="grid gap-5 md:grid-cols-3">
+            <div className="flex flex-col gap-4 rounded-[1.5rem] border border-white/[0.08] bg-white/[0.04] p-6">
+              <span className="grid h-11 w-11 place-items-center rounded-[0.85rem] bg-amber-100/10 text-amber-200">
+                <SunMedium className="size-5" />
+              </span>
               <div>
-                <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-cyan-100/62">Protection plan</p>
-                <h3 className="mt-2 text-2xl font-semibold text-white">What to take outside</h3>
+                <p className="text-sm font-semibold uppercase tracking-[0.18em] text-amber-200/80">Sunscreen</p>
+                <p className="mt-3 text-sm leading-6 text-white/68">{forecast.sunscreen_advice}</p>
               </div>
             </div>
-            <div className="mt-6 grid gap-4">
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="rounded-[1.5rem] border border-white/[0.08] bg-black/20 p-6 overflow-hidden shadow-sm shadow-cyan-300/10 flex min-h-[22rem] flex-col items-center text-center justify-between">
-                  <span className="grid h-14 w-14 place-items-center rounded-[1.1rem] bg-cyan-100/10 text-cyan-100">
-                    <SunMedium className="size-6" />
-                  </span>
-                  <div className="mt-4 space-y-3">
-                    <p className="text-sm font-semibold uppercase tracking-[0.18em] text-cyan-100/80">Sunscreen</p>
-                    <p className="text-xs leading-5 text-white/55">Shield exposed skin during the day&apos;s strongest UV.</p>
-                  </div>
-                  <p className="mt-5 text-sm leading-6 text-white/75 break-words">{forecast.sunscreen_advice}</p>
-                </div>
-                <div className="rounded-[1.5rem] border border-white/[0.08] bg-black/20 p-6 overflow-hidden shadow-sm shadow-cyan-300/10 flex min-h-[22rem] flex-col items-center text-center justify-between">
-                  <span className="grid h-14 w-14 place-items-center rounded-[1.1rem] bg-cyan-100/10 text-cyan-100">
-                    <Shirt className="size-6" />
-                  </span>
-                  <div className="mt-4 space-y-3">
-                    <p className="text-sm font-semibold uppercase tracking-[0.18em] text-cyan-100/80">Clothing</p>
-                    <p className="text-xs leading-5 text-white/55">Layer smartly for both sun and weather comfort.</p>
-                  </div>
-                  <p className="mt-5 text-sm leading-6 text-white/75 break-words">{forecast.clothing_advice}</p>
-                </div>
-              </div>
-              <div className="rounded-[1.5rem] border border-cyan-200/10 bg-black/15 p-5">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold uppercase tracking-[0.18em] text-cyan-100/80">Key precautions</p>
-                    <p className="mt-2 text-sm text-white/65">Top actions to keep your skin safe during today&apos;s outdoor time.</p>
-                  </div>
-                  <span className="rounded-full bg-cyan-100/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan-100">Quick list</span>
-                </div>
-                <div className="mt-4 grid gap-3">
-                  {forecast.actions.map((item) => (
-                    <div key={item} className="flex items-start gap-3 rounded-3xl border border-white/[0.08] bg-white/5 p-4">
-                      <span className="grid h-10 w-10 flex-shrink-0 place-items-center rounded-2xl bg-cyan-100/10 text-cyan-100">
-                        <ShieldCheck className="size-4" />
-                      </span>
-                      <p className="text-sm leading-6 text-white/75">{item}</p>
-                    </div>
-                  ))}
-                </div>
+
+            <div className="flex flex-col gap-4 rounded-[1.5rem] border border-white/[0.08] bg-white/[0.04] p-6">
+              <span className="grid h-11 w-11 place-items-center rounded-[0.85rem] bg-cyan-100/10 text-cyan-100">
+                <Shirt className="size-5" />
+              </span>
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-[0.18em] text-cyan-100/80">Clothing</p>
+                <p className="mt-3 text-sm leading-6 text-white/68">{forecast.clothing_advice}</p>
               </div>
             </div>
-          </article>
+
+            <div className="flex flex-col gap-4 rounded-[1.5rem] border border-white/[0.08] bg-white/[0.04] p-6">
+              <span className="grid h-11 w-11 place-items-center rounded-[0.85rem] bg-blue-400/10 text-blue-300">
+                <Droplets className="size-5" />
+              </span>
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-[0.18em] text-blue-300/80">Hydration</p>
+                <p className="mt-3 text-sm leading-6 text-white/68">{forecast.hydration_advice}</p>
+              </div>
+            </div>
+          </div>
         </div>
+
+        {/* Key Precautions — full width */}
+        <div className="rounded-[2rem] border border-cyan-200/10 bg-white/[0.04] p-6">
+          <div className="mb-5">
+            <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-cyan-100/62">Key precautions</p>
+            <h3 className="mt-1.5 text-xl font-semibold text-white">Top actions for today</h3>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3">
+            {forecast.actions.map((item) => (
+              <div key={item} className="flex items-start gap-3 rounded-3xl border border-white/[0.08] bg-white/5 p-4">
+                <span className="grid h-9 w-9 flex-shrink-0 place-items-center rounded-2xl bg-cyan-100/10 text-cyan-100">
+                  <ShieldCheck className="size-4" />
+                </span>
+                <p className="text-sm leading-6 text-white/75">{item}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
       </div>
     </section>
   );
