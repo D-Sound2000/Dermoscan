@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { MessageCircle, ScanLine } from 'lucide-react';
+import { MessageCircle } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { ScanLine, User, LogOut, ChevronDown } from 'lucide-react';
 import { Button, buttonVariants } from '@/components/ui/button';
