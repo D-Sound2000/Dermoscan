@@ -56,6 +56,7 @@ except Exception as exc:
 # ── Config ────────────────────────────────────────────────────────────────────
 
 CHECKPOINT_PATH  = Path(os.getenv("CHECKPOINT_PATH", "best_model.pth"))
+REPORT_CACHE_PATH = Path(os.getenv("REPORT_CACHE_PATH", ".scan_reports.json"))
 _THRESHOLD_ENV   = os.getenv("THRESHOLD")          # explicit override wins
 _THRESHOLD_DEFAULT = 0.2274                         # calibrated threshold (fallback if checkpoint has none)
 
@@ -85,6 +86,27 @@ FALLBACK_RECOMMENDATIONS = {
 SCAN_REPORTS: dict[str, dict[str, Any]] = {}
 
 
+def _load_scan_reports() -> None:
+    if not REPORT_CACHE_PATH.exists():
+        return
+
+    try:
+        cached = json.loads(REPORT_CACHE_PATH.read_text(encoding="utf-8"))
+    except Exception as exc:
+        print(f"WARNING: Could not load report cache {REPORT_CACHE_PATH}: {exc}")
+        return
+
+    if isinstance(cached, dict):
+        SCAN_REPORTS.update({key: value for key, value in cached.items() if isinstance(value, dict)})
+
+
+def _save_scan_reports() -> None:
+    try:
+        REPORT_CACHE_PATH.write_text(json.dumps(SCAN_REPORTS, indent=2, sort_keys=True), encoding="utf-8")
+    except Exception as exc:
+        print(f"WARNING: Could not save report cache {REPORT_CACHE_PATH}: {exc}")
+
+
 def _load_local_env() -> None:
     """Load local .env values into os.environ without overwriting real env vars."""
     env_path = Path(__file__).with_name(".env")
@@ -104,6 +126,11 @@ def _load_local_env() -> None:
 
 _load_local_env()
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_FALLBACK_MODELS = [
+    model.strip()
+    for model in os.getenv("GEMINI_FALLBACK_MODELS", "gemini-2.5-flash-lite").split(",")
+    if model.strip()
+]
 
 # ── Model ─────────────────────────────────────────────────────────────────────
 
@@ -179,6 +206,8 @@ THRESHOLD: float = _THRESHOLD_DEFAULT
 @app.on_event("startup")
 def startup() -> None:
     global _model, THRESHOLD
+    _load_scan_reports()
+    print(f"Loaded {len(SCAN_REPORTS)} cached scan report(s).")
     print(f"Device: {_device}")
     if torch is None:
         print(f"WARNING: PyTorch import failed ({_TORCH_IMPORT_ERROR}). Using fallback scanner.")
@@ -352,6 +381,7 @@ def _store_report(
         "model": "DenseNet121",
         "explainability": "Grad-CAM" if heatmap_generated else "not requested",
     }
+    _save_scan_reports()
     return report_id
 
 
@@ -387,12 +417,20 @@ def _contains_disallowed_diagnosis(reply: str) -> bool:
     return any(phrase in lowered for phrase in blocked_phrases)
 
 
-def _call_gemini(report: dict[str, Any], question: str) -> str:
+def _gemini_model_candidates() -> list[str]:
+    candidates: list[str] = []
+    for model in [GEMINI_MODEL, *GEMINI_FALLBACK_MODELS]:
+        if model and model not in candidates:
+            candidates.append(model)
+    return candidates
+
+
+def _call_gemini_model(model: str, report: dict[str, Any], question: str) -> str:
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         raise HTTPException(status_code=500, detail="GEMINI_API_KEY is not configured on the server.")
 
-    endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
+    endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
     payload = {
         "systemInstruction": {
             "parts": [
@@ -417,6 +455,9 @@ def _call_gemini(report: dict[str, Any], question: str) -> str:
         "generationConfig": {
             "temperature": 0.2,
             "maxOutputTokens": 700,
+            "thinkingConfig": {
+                "thinkingBudget": 0,
+            },
         },
     }
 
@@ -433,9 +474,8 @@ def _call_gemini(report: dict[str, Any], question: str) -> str:
     try:
         with urlrequest.urlopen(req, timeout=30) as response:
             response_payload = json.loads(response.read().decode("utf-8"))
-    except urlerror.HTTPError as exc:
-        print(f"Gemini request failed with status {exc.code}: {exc.read().decode('utf-8', errors='replace')}")
-        raise HTTPException(status_code=502, detail="Gemini request failed. Check the server-side Gemini configuration.") from exc
+    except urlerror.HTTPError:
+        raise
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Could not reach Gemini: {exc}") from exc
 
@@ -447,6 +487,29 @@ def _call_gemini(report: dict[str, Any], question: str) -> str:
             "please arrange professional evaluation with a qualified clinician."
         )
     return reply
+
+
+def _call_gemini(report: dict[str, Any], question: str) -> str:
+    last_error: str | None = None
+
+    for model in _gemini_model_candidates():
+        try:
+            return _call_gemini_model(model, report, question)
+        except urlerror.HTTPError as exc:
+            error_body = exc.read().decode("utf-8", errors="replace")
+            last_error = error_body
+            print(f"Gemini request failed for {model} with status {exc.code}: {error_body}")
+            if exc.code not in (429, 500, 502, 503, 504):
+                break
+
+    raise HTTPException(
+        status_code=502,
+        detail=(
+            "Gemini is temporarily unavailable. Please retry in a moment."
+            if last_error
+            else "Gemini request failed. Check the server-side Gemini configuration."
+        ),
+    )
 
 
 @app.post("/predict", response_model=Prediction)
