@@ -2,10 +2,13 @@
 
 import React from 'react';
 import { MessageCircle, ScanLine } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { ScanLine, User, LogOut, ChevronDown } from 'lucide-react';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { MenuToggleIcon } from '@/components/ui/menu-toggle-icon';
 import { useScroll } from '@/components/ui/use-scroll';
+import { createClient } from '@/lib/supabase';
 
 const links = [
   {
@@ -25,6 +28,76 @@ const links = [
     href: '/#signals',
   },
 ];
+
+function ProfileMenu() {
+  const router = useRouter();
+  const supabase = React.useRef(createClient()).current;
+  const [dropOpen, setDropOpen] = React.useState(false);
+  const [email, setEmail] = React.useState('');
+  const ref = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      if (data.user?.email) setEmail(data.user.email);
+    });
+  }, []);
+
+  React.useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setDropOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  async function signOut() {
+    await supabase.auth.signOut();
+    router.replace('/onboarding');
+  }
+
+  const initial = email ? email[0].toUpperCase() : '?';
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setDropOpen((v) => !v)}
+        className="flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-2.5 py-1.5 text-white/80 hover:bg-white/15 hover:text-white transition-all"
+      >
+        <span className="flex size-6 items-center justify-center rounded-full bg-cyan-400/20 border border-cyan-400/30 text-xs font-semibold text-cyan-200">
+          {initial}
+        </span>
+        <ChevronDown size={13} className={cn('transition-transform', dropOpen && 'rotate-180')} />
+      </button>
+
+      {dropOpen && (
+        <div className="absolute right-0 top-full mt-2 w-56 rounded-2xl border border-white/10 bg-[#071316]/95 backdrop-blur-2xl shadow-2xl shadow-black/40 overflow-hidden z-50">
+          <div className="px-4 py-3 border-b border-white/8">
+            <p className="text-[10px] uppercase tracking-widest text-white/35 font-semibold mb-0.5">Signed in as</p>
+            <p className="text-sm text-white/75 truncate">{email}</p>
+          </div>
+          <div className="p-1.5">
+            <button
+              onClick={() => { setDropOpen(false); router.push('/profile'); }}
+              className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm text-white/65 hover:bg-white/8 hover:text-white transition-colors"
+            >
+              <User size={14} className="text-white/40" />
+              View profile
+            </button>
+            <button
+              onClick={signOut}
+              className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm text-red-400/70 hover:bg-red-500/8 hover:text-red-300 transition-colors"
+            >
+              <LogOut size={14} />
+              Sign out
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function Header() {
   const [open, setOpen] = React.useState(false);
@@ -106,6 +179,12 @@ export function Header() {
         <Button size="icon" variant="outline" onClick={() => setOpen(!open)} className="rounded-full border-white/15 bg-white/10 text-white md:hidden" aria-label={open ? 'Close menu' : 'Open menu'} aria-expanded={open}>
           <MenuToggleIcon open={open} className="size-5" duration={300} />
         </Button>
+        <div className="flex items-center gap-2">
+          <ProfileMenu />
+          <Button size="icon" variant="outline" onClick={() => setOpen(!open)} className="rounded-full border-white/15 bg-white/10 text-white md:hidden" aria-label={open ? 'Close menu' : 'Open menu'} aria-expanded={open}>
+            <MenuToggleIcon open={open} className="size-5" duration={300} />
+          </Button>
+        </div>
       </nav>
 
       <div
