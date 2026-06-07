@@ -19,8 +19,11 @@ from __future__ import annotations
 
 import base64
 import io
+import json
 import os
 from pathlib import Path
+from urllib.parse import urlencode
+from urllib.request import urlopen
 
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -198,6 +201,31 @@ class Health(BaseModel):
     threshold: float
 
 
+class WeatherMetric(BaseModel):
+    time: str
+    uv: float
+
+
+class SkinSafetyWeather(BaseModel):
+    city: str
+    latitude: float
+    longitude: float
+    condition: str
+    temperature: float
+    feels_like: float
+    uv_index: float
+    humidity: int
+    wind_mph: float
+    cloud_cover: int
+    peak_window: str
+    risk_level: str
+    skin_safety_score: int
+    verdict: str
+    recommendation: str
+    actions: list[str]
+    hourly_uv: list[WeatherMetric]
+
+
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @app.get("/health", response_model=Health)
@@ -208,6 +236,186 @@ def health() -> Health:
         checkpoint=str(CHECKPOINT_PATH),
         device=str(_device),
         threshold=THRESHOLD,
+    )
+
+
+def _fetch_json(url: str) -> dict:
+    try:
+        with urlopen(url, timeout=8) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Weather provider request failed: {exc}") from exc
+
+
+def _weather_code_label(code: int) -> str:
+    labels = {
+        0: "Clear sky",
+        1: "Mainly clear",
+        2: "Partly cloudy",
+        3: "Overcast",
+        45: "Fog",
+        48: "Rime fog",
+        51: "Light drizzle",
+        53: "Drizzle",
+        55: "Dense drizzle",
+        61: "Light rain",
+        63: "Rain",
+        65: "Heavy rain",
+        71: "Light snow",
+        73: "Snow",
+        75: "Heavy snow",
+        80: "Rain showers",
+        81: "Rain showers",
+        82: "Heavy showers",
+        95: "Thunderstorm",
+    }
+    return labels.get(code, "Mixed conditions")
+
+
+def _skin_safety_advisory(uv_index: float, temperature: float) -> tuple[int, str, str, str, list[str]]:
+    uv_penalty = min(uv_index * 8, 70)
+    heat_penalty = 14 if temperature >= 90 else 8 if temperature >= 82 else 3 if temperature >= 75 else 0
+    score = max(12, round(100 - uv_penalty - heat_penalty))
+
+    if uv_index >= 8:
+        return (
+            score,
+            "Very High",
+            "Limit direct sun",
+            "Avoid prolonged outdoor exposure during peak UV hours. Choose shade, SPF 50, and protective clothing.",
+            [
+                "Avoid direct sun during peak UV hours",
+                "Use broad-spectrum SPF 50 and reapply every 2 hours",
+                "Wear a wide-brim hat, UV sunglasses, and UPF clothing",
+            ],
+        )
+
+    if uv_index >= 6:
+        return (
+            score,
+            "High",
+            "Go prepared",
+            "Outdoor time is reasonable with strong sun protection and breaks from direct sunlight.",
+            [
+                "Use broad-spectrum SPF 30+",
+                "Wear a hat, sunglasses, and light long sleeves",
+                "Seek shade around midday",
+            ],
+        )
+
+    if uv_index >= 3:
+        return (
+            score,
+            "Moderate",
+            "Use sunscreen",
+            "Normal outdoor activity is okay, but sunscreen is recommended if you will be outside for more than 30 minutes.",
+            [
+                "Apply SPF 30+ before longer outdoor activity",
+                "Bring sunglasses or a cap",
+                "Check exposed skin after extended sun exposure",
+            ],
+        )
+
+    return (
+        score,
+        "Low",
+        "Generally safe",
+        "UV exposure is low today. Basic protection is still helpful for long outdoor plans.",
+        [
+            "Use sunscreen for long outings",
+            "Hydrate and monitor heat comfort",
+            "Keep routine skin self-checks",
+        ],
+    )
+
+
+def _resolve_location(city: str | None, lat: float | None, lon: float | None) -> tuple[str, float, float]:
+    if lat is not None and lon is not None:
+        return city or "Selected location", lat, lon
+
+    query = (city or "").strip()
+    if not query:
+        raise HTTPException(status_code=400, detail="Provide either city or lat/lon.")
+
+    params = urlencode({"name": query, "count": 1, "language": "en", "format": "json"})
+    data = _fetch_json(f"https://geocoding-api.open-meteo.com/v1/search?{params}")
+    results = data.get("results") or []
+    if not results:
+        raise HTTPException(status_code=404, detail=f"Could not find weather location '{query}'.")
+
+    result = results[0]
+    name_parts = [result.get("name"), result.get("admin1"), result.get("country_code")]
+    label = ", ".join(str(part) for part in name_parts if part)
+    return label, float(result["latitude"]), float(result["longitude"])
+
+
+@app.get("/weather/skin-safety", response_model=SkinSafetyWeather)
+def weather_skin_safety(
+    city: str | None = "San Jose",
+    lat: float | None = None,
+    lon: float | None = None,
+) -> SkinSafetyWeather:
+    label, latitude, longitude = _resolve_location(city, lat, lon)
+    params = urlencode({
+        "latitude": latitude,
+        "longitude": longitude,
+        "current": "temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,cloud_cover",
+        "hourly": "uv_index",
+        "forecast_days": 1,
+        "temperature_unit": "fahrenheit",
+        "wind_speed_unit": "mph",
+        "timezone": "auto",
+    })
+    data = _fetch_json(f"https://api.open-meteo.com/v1/forecast?{params}")
+
+    current = data.get("current") or {}
+    hourly = data.get("hourly") or {}
+    times = hourly.get("time") or []
+    uv_values = [float(value or 0) for value in (hourly.get("uv_index") or [])]
+    if not current or not uv_values:
+        raise HTTPException(status_code=502, detail="Weather provider response was missing required fields.")
+
+    current_time = str(current.get("time", ""))
+    current_hour_prefix = current_time[:13]
+    current_uv = uv_values[0]
+    for time_value, uv_value in zip(times, uv_values):
+        if str(time_value).startswith(current_hour_prefix):
+            current_uv = uv_value
+            break
+
+    peak_uv = max(uv_values)
+    peak_indexes = [index for index, value in enumerate(uv_values) if value == peak_uv]
+    start_time = str(times[peak_indexes[0]])[11:16] if times and peak_indexes else "11:00"
+    end_index = min((peak_indexes[-1] if peak_indexes else 12) + 1, len(times) - 1)
+    end_time = str(times[end_index])[11:16] if times else "15:00"
+
+    temperature = float(current.get("temperature_2m", 0))
+    score, risk_level, verdict, recommendation, actions = _skin_safety_advisory(current_uv, temperature)
+    sample_indexes = [9, 11, 13, 15, 17]
+    hourly_uv = [
+        WeatherMetric(time=str(times[index])[11:16], uv=round(uv_values[index], 1))
+        for index in sample_indexes
+        if index < len(times)
+    ]
+
+    return SkinSafetyWeather(
+        city=label,
+        latitude=latitude,
+        longitude=longitude,
+        condition=_weather_code_label(int(current.get("weather_code", 0))),
+        temperature=round(temperature, 1),
+        feels_like=round(float(current.get("apparent_temperature", temperature)), 1),
+        uv_index=round(current_uv, 1),
+        humidity=int(current.get("relative_humidity_2m", 0)),
+        wind_mph=round(float(current.get("wind_speed_10m", 0)), 1),
+        cloud_cover=int(current.get("cloud_cover", 0)),
+        peak_window=f"{start_time} - {end_time}",
+        risk_level=risk_level,
+        skin_safety_score=score,
+        verdict=verdict,
+        recommendation=recommendation,
+        actions=actions,
+        hourly_uv=hourly_uv,
     )
 
 
