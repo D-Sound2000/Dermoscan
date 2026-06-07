@@ -16,6 +16,7 @@ checkpoints/
 
 # Data
 data/
+.scan_reports.json
 
 # Jupyter
 .ipynb_checkpoints/
