@@ -840,30 +840,45 @@ export function WeatherSafetyAdvisor({ initialLocation, skinType }: WeatherSafet
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
             {forecast.hourly_uv.map((item) => {
               const highlight = item.time === forecast.best_time;
+              const fillPct = Math.min(90, Math.max(12, (item.uv / 11) * 90));
+              const fillGradient = highlight
+                ? "from-cyan-400/30 to-cyan-400/0"
+                : item.uv >= 8
+                ? "from-red-500/35 to-red-500/0"
+                : item.uv >= 6
+                ? "from-orange-400/35 to-orange-400/0"
+                : item.uv >= 3
+                ? "from-amber-400/30 to-amber-400/0"
+                : "from-emerald-400/25 to-emerald-400/0";
+              const labelText = item.uv >= 11 ? "Extreme" : item.uv >= 8 ? "Very High" : item.uv >= 6 ? "High" : item.uv >= 3 ? "Moderate" : "Low";
+              const labelColor = highlight
+                ? "text-cyan-300"
+                : item.uv >= 8
+                ? "text-red-400"
+                : item.uv >= 6
+                ? "text-orange-400"
+                : item.uv >= 3
+                ? "text-amber-400"
+                : "text-emerald-400";
+
               return (
                 <div
                   key={item.time}
-                  className={`relative flex min-h-[8rem] flex-col items-center justify-end overflow-hidden rounded-[1.3rem] border p-3 transition ${
+                  className={`relative flex h-36 flex-col items-center justify-between overflow-hidden rounded-[1.3rem] border p-4 transition ${
                     highlight
-                      ? "border-cyan-300/40 bg-cyan-300/10"
-                      : "border-white/[0.08] bg-black/20"
+                      ? "border-cyan-300/30 bg-cyan-300/[0.06]"
+                      : "border-white/[0.07] bg-black/20"
                   }`}
                 >
-                  <div className="mb-3 flex h-full w-full items-end">
-                    <div
-                      className={`mx-auto w-3 rounded-full ${highlight ? "bg-cyan-300" : "bg-gradient-to-t from-cyan-300 to-orange-300"}`}
-                      style={{ height: `${Math.max(32, item.uv * 12)}px` }}
-                    />
-                  </div>
-                  <div className="w-full text-center">
-                    <strong className="block text-sm text-white">UV {item.uv}</strong>
-                    <span className="mt-1 block text-xs text-white/45">{item.time}</span>
-                  </div>
-                  {highlight ? (
-                    <span className="mt-2 rounded-full bg-cyan-100/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-100">
-                      Best time
-                    </span>
-                  ) : null}
+                  <div
+                    className={`absolute bottom-0 left-0 right-0 bg-gradient-to-t ${fillGradient} transition-all`}
+                    style={{ height: `${fillPct}%` }}
+                  />
+                  <span className="relative z-10 text-xs text-white/40">{item.time}</span>
+                  <strong className="relative z-10 text-3xl font-bold tracking-tight text-white">{item.uv}</strong>
+                  <span className={`relative z-10 text-[10px] font-semibold uppercase tracking-wider ${labelColor}`}>
+                    {highlight ? "Best" : labelText}
+                  </span>
                 </div>
               );
             })}

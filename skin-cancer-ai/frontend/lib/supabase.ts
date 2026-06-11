@@ -17,3 +17,14 @@ export type Profile = {
   latitude: number | null;
   longitude: number | null;
 };
+
+export type Scan = {
+  id: string;
+  user_id: string;
+  mole_label: string;
+  malignant_probability: number;
+  benign_probability: number;
+  predicted_class: string;
+  report_id: string;
+  scanned_at: string;
+};

@@ -3,7 +3,7 @@
 import React from 'react';
 import { MessageCircle } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { ScanLine, User, LogOut, ChevronDown } from 'lucide-react';
+import { Activity, ScanLine, User, LogOut, ChevronDown } from 'lucide-react';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { MenuToggleIcon } from '@/components/ui/menu-toggle-icon';
@@ -26,6 +26,10 @@ const links = [
   {
     label: 'Signals',
     href: '/#signals',
+  },
+  {
+    label: 'My Moles',
+    href: '/my-moles',
   },
 ];
 
@@ -84,6 +88,13 @@ function ProfileMenu() {
             >
               <User size={14} className="text-white/40" />
               View profile
+            </button>
+            <button
+              onClick={() => { setDropOpen(false); router.push('/my-moles'); }}
+              className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm text-white/65 hover:bg-white/8 hover:text-white transition-colors"
+            >
+              <Activity size={14} className="text-white/40" />
+              My Moles
             </button>
             <button
               onClick={signOut}

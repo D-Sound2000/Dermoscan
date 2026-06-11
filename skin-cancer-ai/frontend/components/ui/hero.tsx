@@ -7,6 +7,8 @@ import { motion, useReducedMotion } from "framer-motion";
 import {
   Activity,
   BarChart3,
+  BookmarkPlus,
+  Check,
   Eye,
   FileScan,
   Flame,
@@ -17,10 +19,12 @@ import {
   ShieldCheck,
   Sparkles,
   ThermometerSun,
+  TrendingUp,
   UploadCloud,
   X,
 } from "lucide-react";
 import { Header } from "@/components/ui/header-2";
+import { createClient } from "@/lib/supabase";
 
 const signalCards = [
   { label: "Validation AUC", value: "0.9869", icon: BarChart3 },
@@ -59,6 +63,12 @@ export default function ShaderShowcase() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isHeatmapLoading, setIsHeatmapLoading] = useState(false);
   const reduceMotion = useReducedMotion();
+  const supabaseRef = useRef(createClient());
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [moleInput, setMoleInput] = useState("");
+  const [existingMoles, setExistingMoles] = useState<string[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
+  const [savedMole, setSavedMole] = useState<string | null>(null);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -142,6 +152,7 @@ export default function ShaderShowcase() {
     setUploadError(null);
     setPrediction(null);
     setHeatmapImage(null);
+    setSavedMole(null);
 
     try {
       const payload = await requestPrediction("predict");
@@ -159,6 +170,7 @@ export default function ShaderShowcase() {
 
     setIsHeatmapLoading(true);
     setUploadError(null);
+    setSavedMole(null);
 
     try {
       const payload = await requestPrediction<HeatmapPrediction>("predict-with-heatmap");
@@ -170,6 +182,38 @@ export default function ShaderShowcase() {
     } finally {
       setIsHeatmapLoading(false);
     }
+  };
+
+  const openSaveModal = async () => {
+    const { data: { user } } = await supabaseRef.current.auth.getUser();
+    if (!user) return;
+    const { data } = await supabaseRef.current
+      .from("scans")
+      .select("mole_label")
+      .eq("user_id", user.id);
+    const allLabels = (data ?? []).map((r: { mole_label: string }) => r.mole_label);
+    const labels = allLabels.filter((v: string, i: number, a: string[]) => a.indexOf(v) === i);
+    setExistingMoles(labels);
+    setMoleInput("");
+    setShowSaveModal(true);
+  };
+
+  const handleSave = async () => {
+    if (!prediction || !moleInput.trim()) return;
+    const { data: { user } } = await supabaseRef.current.auth.getUser();
+    if (!user) return;
+    setIsSaving(true);
+    await supabaseRef.current.from("scans").insert({
+      user_id: user.id,
+      mole_label: moleInput.trim(),
+      malignant_probability: prediction.malignant_probability,
+      benign_probability: prediction.benign_probability,
+      predicted_class: prediction.predicted_class,
+      report_id: prediction.report_id,
+    });
+    setIsSaving(false);
+    setSavedMole(moleInput.trim());
+    setShowSaveModal(false);
   };
 
   const riskValue = prediction ? Math.round(prediction.malignant_probability * 100) : 0;
@@ -488,6 +532,53 @@ export default function ShaderShowcase() {
                     Ask report
                   </Link>
                 </div>
+
+                {prediction && !savedMole && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mt-3 flex items-center justify-between gap-3 rounded-2xl border border-cyan-400/40 bg-[#071e2c]/80 px-4 py-3 backdrop-blur-sm"
+                  >
+                    <div className="min-w-0">
+                      <p className="flex items-center gap-1.5 text-xs font-semibold text-cyan-200">
+                        <TrendingUp className="size-3.5 shrink-0" />
+                        Track evolution
+                      </p>
+                      <p className="mt-0.5 truncate text-[11px] text-white/60">
+                        Save to mole history to chart risk over time
+                      </p>
+                    </div>
+                    <button
+                      onClick={openSaveModal}
+                      className="shrink-0 rounded-full border border-cyan-400/60 bg-cyan-500/25 px-3.5 py-1.5 text-xs font-semibold text-cyan-200 transition hover:bg-cyan-500/40 hover:text-white"
+                    >
+                      Save scan
+                    </button>
+                  </motion.div>
+                )}
+
+                {prediction && savedMole && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mt-3 flex items-center gap-2.5 rounded-2xl border border-emerald-400/20 bg-emerald-400/5 px-4 py-3"
+                  >
+                    <span className="grid size-5 shrink-0 place-items-center rounded-full bg-emerald-400/20">
+                      <Check className="size-3 text-emerald-300" />
+                    </span>
+                    <p className="text-xs text-emerald-200/75">
+                      Saved to{" "}
+                      <span className="font-semibold text-emerald-200">"{savedMole}"</span>
+                      {" · "}
+                      <a
+                        href="/my-moles"
+                        className="underline underline-offset-2 transition-colors hover:text-emerald-100"
+                      >
+                        View history →
+                      </a>
+                    </p>
+                  </motion.div>
+                )}
               </div>
             </motion.section>
           </div>
@@ -522,6 +613,89 @@ export default function ShaderShowcase() {
             </motion.aside>
         </div>
       </main>
+
+      {showSaveModal && (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center p-4"
+          onClick={() => setShowSaveModal(false)}
+        >
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-md" />
+          <motion.div
+            initial={{ opacity: 0, scale: 0.96, y: 8 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            className="relative w-full max-w-sm rounded-[1.5rem] border border-white/20 bg-[#0c1e28] p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center gap-3">
+              <div className="grid size-10 place-items-center rounded-xl border border-cyan-400/35 bg-cyan-400/15">
+                <BookmarkPlus className="size-5 text-cyan-300" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-white">Save scan</h3>
+                <p className="text-[11px] text-white/55">Track this mole&apos;s risk over time</p>
+              </div>
+            </div>
+
+            {existingMoles.length > 0 && (
+              <div className="mb-4">
+                <p className="mb-2 text-[10px] uppercase tracking-widest text-white/45">
+                  Your moles
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {existingMoles.map((m) => (
+                    <button
+                      key={m}
+                      onClick={() => setMoleInput(m)}
+                      className={`rounded-full border px-3 py-1 text-[11px] transition ${
+                        moleInput === m
+                          ? "border-cyan-400/60 bg-cyan-400/25 text-cyan-200"
+                          : "border-white/20 bg-white/8 text-white/70 hover:border-white/35 hover:text-white"
+                      }`}
+                    >
+                      {m}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="mb-4">
+              <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-white/50">
+                {existingMoles.length ? "Mole name" : "Name this mole"}
+              </label>
+              <input
+                type="text"
+                value={moleInput}
+                onChange={(e) => setMoleInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSave()}
+                placeholder={
+                  existingMoles.length
+                    ? "Select above or type a new name"
+                    : 'e.g. "Left shoulder", "Back of neck"'
+                }
+                className="w-full rounded-xl border border-white/20 bg-[#071318] px-4 py-2.5 text-sm text-white placeholder:text-white/35 focus:border-cyan-400/60 focus:outline-none"
+                autoFocus
+              />
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowSaveModal(false)}
+                className="flex-1 rounded-full border border-white/20 bg-white/8 py-2.5 text-sm text-white/70 transition hover:bg-white/15 hover:text-white"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={!moleInput.trim() || isSaving}
+                className="flex-1 rounded-full bg-gradient-to-r from-cyan-500 to-orange-500 py-2.5 text-sm font-semibold text-white transition hover:from-cyan-400 hover:to-orange-400 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isSaving ? "Saving…" : "Save"}
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
 
       <div className="absolute bottom-8 right-8 z-30 hidden h-20 w-20 items-center justify-center md:flex">
         <div className="relative flex h-20 w-20 items-center justify-center">
