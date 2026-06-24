@@ -20,16 +20,12 @@ const links = [
     href: '/#scan',
   },
   {
-    label: 'Results',
-    href: '/#results',
-  },
-  {
-    label: 'Signals',
-    href: '/#signals',
-  },
-  {
     label: 'My Moles',
     href: '/my-moles',
+  },
+  {
+    label: 'UV Safety',
+    href: '/uv-safety',
   },
 ];
 

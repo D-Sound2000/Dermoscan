@@ -8,6 +8,7 @@ import {
   Activity,
   BarChart3,
   BookmarkPlus,
+  Camera,
   Check,
   Eye,
   FileScan,
@@ -27,7 +28,7 @@ import { Header } from "@/components/ui/header-2";
 import { createClient } from "@/lib/supabase";
 
 const signalCards = [
-  { label: "Validation AUC", value: "0.9869", icon: BarChart3 },
+  { label: "Validation AUC", value: "93%", icon: BarChart3 },
   { label: "Inference Model", value: "DenseNet", icon: Microscope },
   { label: "Explainability", value: "Grad-CAM", icon: FileScan },
   { label: "Use Case", value: "Review", icon: ShieldCheck },
@@ -53,6 +54,7 @@ const formatProbability = (value: number) => `${Math.round(value * 100)}%`;
 export default function ShaderShowcase() {
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
   const [isActive, setIsActive] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -357,6 +359,14 @@ export default function ShaderShowcase() {
                 className="hidden"
                 onChange={(event) => chooseFile(event.target.files?.[0])}
               />
+              <input
+                ref={cameraInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                onChange={(event) => chooseFile(event.target.files?.[0])}
+              />
               <div
                 onDragOver={(event) => {
                   event.preventDefault();
@@ -410,11 +420,19 @@ export default function ShaderShowcase() {
                     <div className="flex gap-2">
                       <button
                         type="button"
+                        onClick={() => cameraInputRef.current?.click()}
+                        className="inline-flex min-h-10 items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 text-xs font-semibold text-white/85 transition hover:bg-white/20"
+                      >
+                        <Camera className="size-4" />
+                        Camera
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => inputRef.current?.click()}
                         className="inline-flex min-h-10 items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 text-xs font-semibold text-white/85 transition hover:bg-white/20"
                       >
                         <UploadCloud className="size-4" />
-                        Change
+                        Upload
                       </button>
                       {selectedFile ? (
                         <button
