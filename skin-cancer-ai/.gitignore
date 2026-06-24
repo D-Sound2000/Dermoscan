@@ -11,7 +11,6 @@ build/
 .pytest_cache/
 
 # Model checkpoints (large binary files)
-best_model.pth
 checkpoints/
 
 # Data
