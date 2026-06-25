@@ -1,0 +1,13 @@
+[project]
+name = "dermoscan-backend"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi==0.117.1",
+  "numpy==2.3.5",
+  "pillow==12.0.0",
+  "python-multipart==0.0.20",
+]
+
+[tool.vercel]
+entrypoint = "api:app"

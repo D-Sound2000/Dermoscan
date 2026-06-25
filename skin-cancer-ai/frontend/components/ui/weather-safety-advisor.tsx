@@ -54,8 +54,8 @@ type WeatherSafetyResponse = {
   hourly_uv: WeatherMetric[];
 };
 
-const GEOCODING_ENDPOINT = "https://geocoding-api.open-meteo.com/v1/search";
-const OPEN_METEO_ENDPOINT = "https://api.open-meteo.com/v1/forecast";
+const GEOCODING_ENDPOINT = "/api/weather/search";
+const OPEN_METEO_ENDPOINT = "/api/weather/forecast";
 
 function _weatherCodeLabel(code: number) {
   const labels: Record<number, string> = {
@@ -460,7 +460,7 @@ export function WeatherSafetyAdvisor({ initialLocation, skinType }: WeatherSafet
         latitude: String(latitude),
         longitude: String(longitude),
         current: "temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,cloud_cover",
-        hourly: "uv_index,pm2_5,pm10",
+        hourly: "uv_index",
         forecast_days: "1",
         temperature_unit: "fahrenheit",
         wind_speed_unit: "mph",
@@ -479,8 +479,6 @@ export function WeatherSafetyAdvisor({ initialLocation, skinType }: WeatherSafet
       const hourly = weatherPayload?.hourly ?? {};
       const times = hourly.time ?? [];
       const uvValues = (hourly.uv_index ?? []).map((value: unknown) => Number(value ?? 0));
-      const pm25Values = (hourly.pm2_5 ?? []).map((value: unknown) => Number(value ?? 0));
-      const pm10Values = (hourly.pm10 ?? []).map((value: unknown) => Number(value ?? 0));
 
       if (!current || !uvValues.length) {
         throw new Error("Weather provider response is missing required fields.");
@@ -520,18 +518,8 @@ export function WeatherSafetyAdvisor({ initialLocation, skinType }: WeatherSafet
       const cloudCover = Number(current.cloud_cover ?? 0);
       const condition = _weatherCodeLabel(Number(current.weather_code ?? 0));
 
-      const airQualityIndex = pm25Values[bestTimeIndex] ?? pm25Values[0] ?? pm10Values[bestTimeIndex] ?? pm10Values[0] ?? undefined;
-      const airQualityCategory = airQualityIndex === undefined
-        ? undefined
-        : airQualityIndex <= 12
-          ? "Good"
-          : airQualityIndex <= 35
-            ? "Moderate"
-            : airQualityIndex <= 55
-              ? "Unhealthy for sensitive groups"
-              : airQualityIndex <= 150
-                ? "Unhealthy"
-                : "Very Unhealthy";
+      const airQualityIndex = undefined;
+      const airQualityCategory = undefined;
 
       const advisoryData = getAdvisory(currentUv, temperature, cloudCover, humidity, windMph, currentHour, airQualityIndex, resolvedSkinType, timeOutside);
       const sunscreenAdvice = getSunscreenAdvice(currentUv, resolvedSkinType);
@@ -576,7 +564,7 @@ export function WeatherSafetyAdvisor({ initialLocation, skinType }: WeatherSafet
       const message = err instanceof Error ? err.message : String(err);
       setError(
         message === "Failed to fetch"
-          ? "Unable to reach Open-Meteo. Check your internet connection and try again."
+          ? "Unable to reach the weather service. Check your connection and try again."
           : message,
       );
     } finally {

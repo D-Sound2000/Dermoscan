@@ -47,7 +47,7 @@ type HeatmapPrediction = Prediction & {
   heatmap_image: string;
 };
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_DERMOSCAN_API_URL ?? "http://localhost:8000";
+const API_BASE_URL = "/api/scan";
 
 const formatProbability = (value: number) => `${Math.round(value * 100)}%`;
 

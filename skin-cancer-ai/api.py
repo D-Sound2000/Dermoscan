@@ -191,7 +191,15 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3001", "http://172.24.76.36:3000", "http://172.24.76.36:3001"],
+    allow_origins=[
+        origin.strip()
+        for origin in os.getenv(
+            "CORS_ORIGINS",
+            "http://localhost:3000,http://localhost:3001,http://172.24.76.36:3000,http://172.24.76.36:3001",
+        ).split(",")
+        if origin.strip()
+    ],
+    allow_origin_regex=os.getenv("CORS_ORIGIN_REGEX", r"https://.*\.vercel\.app"),
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
@@ -266,6 +274,14 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     reply: str
+
+
+class RootInfo(BaseModel):
+    status: str
+    service: str
+    endpoints: list[str]
+
+
 class WeatherMetric(BaseModel):
     time: str
     uv: float
@@ -292,6 +308,15 @@ class SkinSafetyWeather(BaseModel):
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
+
+@app.get("/", response_model=RootInfo)
+def root() -> RootInfo:
+    return RootInfo(
+        status="ok",
+        service="DermoScan API",
+        endpoints=["/health", "/predict", "/predict-with-heatmap", "/api/chat", "/weather/skin-safety"],
+    )
+
 
 @app.get("/health", response_model=Health)
 def health() -> Health:
