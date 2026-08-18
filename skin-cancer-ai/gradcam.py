@@ -78,17 +78,17 @@ class GradCAM:
         self._bwd_hook.remove()
         self.model.forward = self._orig_forward
 
-    def compute(self, tensor: torch.Tensor, class_idx: int) -> np.ndarray:
+    def compute(self, tensor: torch.Tensor, class_idx: int) -> tuple:
         """
-        Run a forward + backward pass and return the Grad-CAM map.
+        Run a forward + backward pass and return the Grad-CAM map and model output.
 
         Args:
             tensor:    Preprocessed input (1, C, H, W) on the correct device.
             class_idx: Target class index (1 = Malignant).
 
         Returns:
-            cam: float32 numpy array of shape (H_feat, W_feat) in [0, 1].
-                 For a 224×224 input this is (7, 7).
+            (cam, output): cam is a float32 numpy array of shape (H_feat, W_feat)
+                           in [0, 1]; output is the raw model logits tensor (1, C).
         """
         self.model.zero_grad()
 
@@ -117,7 +117,7 @@ class GradCAM:
         else:
             cam = torch.zeros_like(cam)
 
-        return cam.cpu().numpy().astype(np.float32)
+        return cam.cpu().numpy().astype(np.float32), output.detach()
 
 
 # ── Visualisation helpers ─────────────────────────────────────────────────────

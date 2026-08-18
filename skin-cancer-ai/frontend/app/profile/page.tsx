@@ -13,6 +13,9 @@ import {
   LogOut,
   ScanLine,
   Flame,
+  Shield,
+  ShieldCheck,
+  Loader2,
 } from "lucide-react";
 import { createClient, type Profile } from "@/lib/supabase";
 
@@ -90,6 +93,16 @@ export default function ProfilePage() {
   const [email, setEmail]     = useState("");
   const [loading, setLoading] = useState(true);
 
+  // MFA state
+  const [mfaFactor, setMfaFactor]       = useState<{ id: string } | null>(null);
+  const [enrolling, setEnrolling]       = useState(false);
+  const [qrCode, setQrCode]             = useState<string | null>(null);
+  const [enrollFactorId, setEnrollFactorId] = useState<string | null>(null);
+  const [enrollCode, setEnrollCode]     = useState("");
+  const [enrollError, setEnrollError]   = useState("");
+  const [enrollLoading, setEnrollLoading] = useState(false);
+  const [mfaActionLoading, setMfaActionLoading] = useState(false);
+
   useEffect(() => {
     async function load() {
       const { data: { user } } = await supabase.auth.getUser();
@@ -97,17 +110,64 @@ export default function ProfilePage() {
 
       setEmail(user.email ?? "");
 
-      const { data } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", user.id)
-        .single();
+      const [{ data: profileData }, { data: factorsData }] = await Promise.all([
+        supabase.from("profiles").select("*").eq("id", user.id).single(),
+        supabase.auth.mfa.listFactors(),
+      ]);
 
-      setProfile(data);
+      setProfile(profileData);
+      const totp = (factorsData?.totp ?? []).find((f: any) => f.status === "verified") ?? null;
+      setMfaFactor(totp ? { id: totp.id } : null);
       setLoading(false);
     }
     load();
   }, []);
+
+  async function startEnroll() {
+    setEnrolling(true);
+    setQrCode(null);
+    setEnrollCode("");
+    setEnrollError("");
+    const { data, error } = await supabase.auth.mfa.enroll({ factorType: "totp" });
+    if (error || !data) { setEnrolling(false); return; }
+    setQrCode(data.totp.qr_code);
+    setEnrollFactorId(data.id);
+  }
+
+  async function confirmEnroll(e: React.FormEvent) {
+    e.preventDefault();
+    if (!enrollFactorId) return;
+    setEnrollLoading(true);
+    setEnrollError("");
+    try {
+      const { data: ch, error: chErr } = await supabase.auth.mfa.challenge({ factorId: enrollFactorId });
+      if (chErr) throw chErr;
+      const { error: vErr } = await supabase.auth.mfa.verify({ factorId: enrollFactorId, challengeId: ch.id, code: enrollCode });
+      if (vErr) throw vErr;
+      setMfaFactor({ id: enrollFactorId });
+      cancelEnroll();
+    } catch (err: any) {
+      setEnrollError(err.message ?? "Invalid code. Try again.");
+    } finally {
+      setEnrollLoading(false);
+    }
+  }
+
+  function cancelEnroll() {
+    setEnrolling(false);
+    setQrCode(null);
+    setEnrollFactorId(null);
+    setEnrollCode("");
+    setEnrollError("");
+  }
+
+  async function unenroll() {
+    if (!mfaFactor) return;
+    setMfaActionLoading(true);
+    const { error } = await supabase.auth.mfa.unenroll({ factorId: mfaFactor.id });
+    if (!error) setMfaFactor(null);
+    setMfaActionLoading(false);
+  }
 
   async function signOut() {
     await supabase.auth.signOut();
@@ -265,6 +325,83 @@ export default function ProfilePage() {
                 }
               />
             </div>
+
+            {/* Security / 2FA */}
+            <div
+              className="rounded-[1.4rem] border border-white/[0.08] bg-white/10 backdrop-blur-2xl p-5 flex flex-col gap-2.5"
+              style={{ filter: "url(#glass-effect)" }}
+            >
+              <p className="text-xs uppercase tracking-widest font-semibold text-white/35 px-1 mb-1">Security</p>
+              {mfaFactor ? (
+                <div className="flex items-center justify-between px-4 py-3 rounded-xl" style={{ background: "rgba(34,211,238,0.06)", border: "1px solid rgba(34,211,238,0.18)" }}>
+                  <div className="flex items-center gap-3">
+                    <ShieldCheck size={16} className="text-cyan-300 shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium text-white">Two-factor auth enabled</p>
+                      <p className="text-xs text-white/40">Authenticator app (TOTP)</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={unenroll}
+                    disabled={mfaActionLoading}
+                    className="text-xs text-red-400/70 hover:text-red-300 transition-colors disabled:opacity-40"
+                  >
+                    {mfaActionLoading ? "…" : "Remove"}
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={startEnroll}
+                  className="flex items-center gap-2.5 px-4 py-3 rounded-xl text-sm text-white/65 hover:bg-white/8 hover:text-white transition-colors w-full text-left"
+                >
+                  <Shield size={15} className="text-white/35" />
+                  Set up two-factor auth
+                </button>
+              )}
+            </div>
+
+            {/* MFA enrollment modal */}
+            {enrolling && (
+              <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                <div className="w-full max-w-sm rounded-[1.4rem] border border-white/[0.08] bg-[#020617] p-6 flex flex-col gap-4">
+                  <p className="text-base font-semibold text-white">Set up two-factor auth</p>
+                  {!qrCode ? (
+                    <div className="flex items-center justify-center py-8">
+                      <div className="w-6 h-6 rounded-full border-2 border-cyan-400 border-t-transparent animate-spin" />
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-sm text-white/55">Scan this QR code with Google Authenticator, Authy, or any TOTP app.</p>
+                      <img src={qrCode} alt="2FA QR code" className="w-44 h-44 mx-auto rounded-xl bg-white p-2" />
+                      <form onSubmit={confirmEnroll} className="flex flex-col gap-3">
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          placeholder="Enter 6-digit code"
+                          value={enrollCode}
+                          onChange={(e) => setEnrollCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                          maxLength={6}
+                          className="w-full bg-black/30 border border-white/10 text-white placeholder-white/40 rounded-xl px-4 py-3 text-sm outline-none focus:border-cyan-400/60 transition-colors text-center tracking-widest font-mono"
+                          autoFocus
+                        />
+                        {enrollError && <p className="text-xs text-red-400">{enrollError}</p>}
+                        <button
+                          type="submit"
+                          disabled={enrollCode.length !== 6 || enrollLoading}
+                          className="w-full py-3 rounded-xl text-sm font-semibold bg-cyan-400/20 text-cyan-200 border border-cyan-400/30 hover:bg-cyan-400/30 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all"
+                        >
+                          {enrollLoading && <Loader2 size={14} className="animate-spin" />}
+                          {enrollLoading ? "Verifying…" : "Enable 2FA"}
+                        </button>
+                        <button type="button" onClick={cancelEnroll} className="text-xs text-white/35 hover:text-white/60 transition-colors text-center">
+                          Cancel
+                        </button>
+                      </form>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Actions */}
             <div

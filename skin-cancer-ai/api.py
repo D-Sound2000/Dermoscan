@@ -62,6 +62,10 @@ REPORT_CACHE_PATH = Path(os.getenv("REPORT_CACHE_PATH", ".scan_reports.json"))
 _THRESHOLD_ENV   = os.getenv("THRESHOLD")          # explicit override wins
 _THRESHOLD_DEFAULT = 0.2274                         # calibrated threshold (fallback if checkpoint has none)
 
+# Optional runtime checkpoint download URL. If set and local checkpoint
+# is missing, the server will attempt to download the file at startup.
+CHECKPOINT_URL = os.getenv("CHECKPOINT_URL")
+
 CLASSES     = ["Benign", "Malignant"]
 NUM_CLASSES = 2
 
@@ -133,6 +137,27 @@ GEMINI_FALLBACK_MODELS = [
     for model in os.getenv("GEMINI_FALLBACK_MODELS", "gemini-2.5-flash-lite").split(",")
     if model.strip()
 ]
+
+
+def _ensure_checkpoint_available() -> None:
+    """If `CHECKPOINT_URL` is provided and `CHECKPOINT_PATH` does not exist,
+    attempt to download the checkpoint to `CHECKPOINT_PATH` so the server
+    can load a model at runtime without embedding the checkpoint in the image.
+    """
+    try:
+        if CHECKPOINT_PATH.exists():
+            return
+        url = os.getenv("CHECKPOINT_URL") or CHECKPOINT_URL
+        if not url:
+            return
+        print(f"Attempting to download checkpoint from {url} to {CHECKPOINT_PATH} ...")
+        CHECKPOINT_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with urlopen(url, timeout=60) as resp:
+            data = resp.read()
+        CHECKPOINT_PATH.write_bytes(data)
+        print("Checkpoint download completed.")
+    except Exception as exc:
+        print(f"WARNING: could not download checkpoint from {url}: {exc}")
 
 # ── Model ─────────────────────────────────────────────────────────────────────
 
@@ -219,9 +244,13 @@ def startup() -> None:
     _load_scan_reports()
     print(f"Loaded {len(SCAN_REPORTS)} cached scan report(s).")
     print(f"Device: {_device}")
+    # Ensure we have a checkpoint available (download if CHECKPOINT_URL is set)
+    _ensure_checkpoint_available()
     if torch is None:
         print(f"WARNING: PyTorch import failed ({_TORCH_IMPORT_ERROR}). Using fallback scanner.")
         return
+
+    torch.set_num_threads(2)
 
     try:
         _model, ckpt_threshold = load_model(CHECKPOINT_PATH, _device)
@@ -819,17 +848,13 @@ async def predict_with_heatmap(file: UploadFile = File(...)) -> PredictionWithHe
     # Preprocess (same pipeline as /predict)
     tensor = _preprocess(image).unsqueeze(0).to(_device)
 
-    # ── Standard inference ────────────────────────────────────────────────────
-    with torch.no_grad():
-        probs = torch.softmax(_model(tensor), dim=1).squeeze(0).cpu().tolist()
-
-    benign_prob    = round(probs[0], 4)
-    malignant_prob = round(probs[1], 4)
-    predicted      = "Malignant" if malignant_prob >= THRESHOLD else "Benign"
-    recommendation = RECOMMENDATIONS[predicted]
-
-    # ── Grad-CAM for malignant class (index 1) ────────────────────────────────
     if GradCAM is None or overlay_heatmap is None or pil_to_base64 is None:
+        with torch.no_grad():
+            probs = torch.softmax(_model(tensor), dim=1).squeeze(0).cpu().tolist()
+        benign_prob    = round(probs[0], 4)
+        malignant_prob = round(probs[1], 4)
+        predicted      = "Malignant" if malignant_prob >= THRESHOLD else "Benign"
+        recommendation = RECOMMENDATIONS[predicted]
         report_id = _store_report(
             predicted_class=predicted,
             malignant_probability=malignant_prob,
@@ -847,13 +872,20 @@ async def predict_with_heatmap(file: UploadFile = File(...)) -> PredictionWithHe
             heatmap_image=_fallback_heatmap(image),
         )
 
+    # ── Grad-CAM (single forward+backward pass — probabilities come from here) ──
     gcam = GradCAM(_model)
     try:
-        cam = gcam.compute(tensor, class_idx=1)
+        cam, output = gcam.compute(tensor, class_idx=1)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Grad-CAM failed: {exc}") from exc
     finally:
         gcam.remove()
+
+    probs = torch.softmax(output, dim=1).squeeze(0).cpu().tolist()
+    benign_prob    = round(probs[0], 4)
+    malignant_prob = round(probs[1], 4)
+    predicted      = "Malignant" if malignant_prob >= THRESHOLD else "Benign"
+    recommendation = RECOMMENDATIONS[predicted]
 
     # Overlay heatmap on the exact 224×224 crop the model was shown
     cropped = _center_crop_for_model(image)

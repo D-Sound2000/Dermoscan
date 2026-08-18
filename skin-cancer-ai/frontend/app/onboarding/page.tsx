@@ -15,6 +15,7 @@ import {
   CheckCircle2,
   Search,
   Sparkles,
+  Shield,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 
@@ -119,6 +120,93 @@ function StepLabel({ step }: { step: number }) {
   );
 }
 
+// ─── MFA verification step ────────────────────────────────────────────────────
+
+function StepMFAVerify({
+  supabase,
+  factorId,
+  onDone,
+  onCancel,
+}: {
+  supabase: ReturnType<typeof createClient>;
+  factorId: string;
+  onDone: (hasProfile: boolean) => void;
+  onCancel: () => void;
+}) {
+  const [code, setCode]       = useState("");
+  const [error, setError]     = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function verify(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+    try {
+      const { data: ch, error: chErr } = await supabase.auth.mfa.challenge({ factorId });
+      if (chErr) throw chErr;
+      const { error: vErr } = await supabase.auth.mfa.verify({ factorId, challengeId: ch.id, code });
+      if (vErr) throw vErr;
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Session error after verification.");
+      const { data: profile } = await supabase
+        .from("profiles").select("skin_type, location_name").eq("id", user.id).single();
+      onDone(!!(profile?.skin_type && profile?.location_name));
+    } catch (err: any) {
+      setError(err.message ?? "Invalid code. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 py-1.5 backdrop-blur-sm">
+          <Shield size={14} className="text-cyan-200" />
+          <span className="text-xs font-medium tracking-wide text-white/90">Two-factor auth</span>
+        </div>
+      </div>
+      <div>
+        <h1 className="text-3xl font-bold text-white mb-1" style={{ fontFamily: "var(--font-serif)" }}>
+          Enter your code
+        </h1>
+        <p className="text-sm text-white/55">
+          Open your authenticator app and enter the 6-digit code to continue.
+        </p>
+      </div>
+      <form onSubmit={verify} className="flex flex-col gap-3">
+        <input
+          type="text"
+          inputMode="numeric"
+          placeholder="000000"
+          value={code}
+          onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+          required
+          maxLength={6}
+          autoFocus
+          className={`${inputCls} text-center text-2xl tracking-[0.5em] font-mono`}
+        />
+        {error && <p className="text-sm text-red-400">{error}</p>}
+        <button
+          type="submit"
+          disabled={code.length !== 6 || loading}
+          className="w-full py-3 rounded-xl text-sm font-semibold transition-all bg-cyan-400/20 text-cyan-200 border border-cyan-400/30 hover:bg-cyan-400/30 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+        >
+          {loading && <Loader2 size={15} className="animate-spin" />}
+          {loading ? "Verifying…" : "Verify"}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="text-sm text-white/35 hover:text-white/60 transition-colors text-center"
+        >
+          ← Back to sign in
+        </button>
+      </form>
+    </div>
+  );
+}
+
 // ─── Auth step ────────────────────────────────────────────────────────────────
 
 function StepAuth({
@@ -126,11 +214,13 @@ function StepAuth({
   setMode,
   supabase,
   onDone,
+  onMFARequired,
 }: {
   mode: AuthMode;
   setMode: (m: AuthMode) => void;
   supabase: ReturnType<typeof createClient>;
   onDone: (hasProfile: boolean) => void;
+  onMFARequired: (factorId: string) => void;
 }) {
   const [email, setEmail]       = useState("");
   const [password, setPassword] = useState("");
@@ -150,7 +240,14 @@ function StepAuth({
       } else {
         const { error, data } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
-        // Check if this user already completed onboarding
+        // Check if MFA verification is required
+        const { data: aalData } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+        if (aalData && aalData.nextLevel === "aal2" && aalData.currentLevel !== "aal2") {
+          const { data: factorsData } = await supabase.auth.mfa.listFactors();
+          const totp = factorsData?.totp?.find((f: any) => f.status === "verified");
+          if (totp) { onMFARequired(totp.id); return; }
+        }
+        // No MFA — check if this user already completed onboarding
         const { data: profile } = await supabase
           .from("profiles")
           .select("skin_type, location_name")
@@ -487,8 +584,9 @@ export default function OnboardingPage() {
   const router   = useRouter();
   const supabase = useRef(createClient()).current;
 
-  const [step, setStep]         = useState(0);
-  const [authMode, setAuthMode] = useState<AuthMode>("signup");
+  const [step, setStep]           = useState(0);
+  const [authMode, setAuthMode]   = useState<AuthMode>("signup");
+  const [mfaFactorId, setMfaFactorId] = useState<string | null>(null);
   const [saving, setSaving]     = useState(false);
   const [saveError, setSaveError] = useState("");
   const [isActive, setIsActive] = useState(false);
@@ -636,12 +734,21 @@ export default function OnboardingPage() {
               exit={{ opacity: 0, x: -20 }}
               transition={{ duration: 0.2 }}
             >
-              {step === 0 && (
+              {step === 0 && !mfaFactorId && (
                 <StepAuth
                   mode={authMode}
                   setMode={setAuthMode}
                   supabase={supabase}
                   onDone={(hasProfile) => hasProfile ? router.replace("/") : setStep(1)}
+                  onMFARequired={setMfaFactorId}
+                />
+              )}
+              {step === 0 && mfaFactorId && (
+                <StepMFAVerify
+                  supabase={supabase}
+                  factorId={mfaFactorId}
+                  onDone={(hasProfile) => { setMfaFactorId(null); hasProfile ? router.replace("/") : setStep(1); }}
+                  onCancel={() => setMfaFactorId(null)}
                 />
               )}
               {step === 1 && (
