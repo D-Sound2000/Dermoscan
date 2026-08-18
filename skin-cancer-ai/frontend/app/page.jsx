@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import ShaderShowcase from "@/components/ui/hero";
-import { createClient } from "@/lib/supabase";
+import { createClient, getValidSession } from "@/lib/supabase";
 
 export default function Home() {
   const router = useRouter();
@@ -12,15 +12,15 @@ export default function Home() {
 
   useEffect(() => {
     const supabase = createClient();
-    supabase.auth.getSession().then(async ({ data }) => {
-      if (!data.session) {
+    getValidSession(supabase).then(async (session) => {
+      if (!session) {
         router.replace("/onboarding");
         return;
       }
       const { data: profile } = await supabase
         .from("profiles")
         .select("skin_type, location_name, latitude, longitude")
-        .eq("id", data.session.user.id)
+        .eq("id", session.user.id)
         .single();
 
       // If no profile or missing required fields, send to onboarding

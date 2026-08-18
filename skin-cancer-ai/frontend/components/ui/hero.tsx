@@ -142,6 +142,7 @@ export default function ShaderShowcase() {
 
   const rememberReport = (payload: Prediction) => {
     window.localStorage.setItem("dermoscan.latestReportId", payload.report_id);
+    window.localStorage.setItem(`dermoscan.report.${payload.report_id}`, JSON.stringify(payload));
   };
 
   const analyzeFile = async () => {

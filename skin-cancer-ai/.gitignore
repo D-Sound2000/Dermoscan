@@ -38,3 +38,4 @@ frontend/.env
 frontend/.env.local
 
 .vercel
+.env*

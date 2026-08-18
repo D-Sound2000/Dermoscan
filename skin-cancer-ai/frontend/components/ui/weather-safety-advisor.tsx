@@ -21,6 +21,15 @@ type WeatherMetric = {
   uv: number;
 };
 
+type OutdoorPlan = {
+  bestIndex: number;
+  bestTime: string;
+  bestWindow: string;
+  bestUv: number;
+  recommendedTime: string;
+  dayIndexes: number[];
+};
+
 type LocationSuggestion = {
   name: string;
   admin1?: string;
@@ -41,6 +50,8 @@ type WeatherSafetyResponse = {
   peak_window: string;
   best_time: string;
   best_outdoor_window: string;
+  best_window_uv: number;
+  recommended_outdoor_time: string;
   sunscreen_advice: string;
   clothing_advice: string;
   hydration_advice: string;
@@ -82,22 +93,13 @@ function _weatherCodeLabel(code: number) {
   return labels[code] ?? "Mixed conditions";
 }
 
-const BURN_TIME_FACTORS: number[] = [0, 0.5, 0.75, 1.1, 1.8, 2.8, 4.5];
-
-function calculateBurnTime(uvIndex: number, skinType: number): number | null {
-  if (uvIndex <= 0) return null;
-  const factor = BURN_TIME_FACTORS[skinType] ?? 1.1;
-  return Math.round((200 / uvIndex) * factor);
-}
-
 function getProtectionActions(uvIndex: number, skinType: number = 3, timeOutside: number = 60): string[] {
-  const burnTime = calculateBurnTime(uvIndex, skinType);
   const reapplyMin = skinType <= 2 ? 60 : skinType <= 4 ? 80 : 110;
   const actions: string[] = [];
 
-  if (burnTime !== null && uvIndex >= 3) {
+  if (uvIndex >= 3) {
     actions.push(
-      `At UV ${uvIndex.toFixed(1)}, skin type ${skinType} burns unprotected in ~${burnTime} min — apply sunscreen before leaving home`,
+      `At UV ${uvIndex.toFixed(1)}, protection is recommended for skin type ${skinType} — apply broad-spectrum sunscreen before leaving home`,
     );
   } else {
     actions.push(`UV is low right now — SPF 15+ on exposed areas covers you for most outings`);
@@ -223,28 +225,71 @@ function getHydrationAdvice(temperature: number, humidity: number, timeOutside: 
   return parts.join(" ");
 }
 
-function chooseBestOutdoorWindow(times: string[], uvValues: number[]) {
-  const daySlots = times
-    .map((time, index) => ({
-      time: String(time),
-      uv: uvValues[index] ?? 0,
-    }))
-    .filter(({ time }) => {
+function formatClock(isoTime: string) {
+  const hour = Number(isoTime.slice(11, 13));
+  const minute = isoTime.slice(14, 16);
+  const period = hour >= 12 ? "PM" : "AM";
+  const displayHour = hour % 12 || 12;
+  return `${displayHour}:${minute} ${period}`;
+}
+
+function getRecommendedOutdoorTime(uvIndex: number, skinType: number) {
+  let range: string;
+
+  if (uvIndex < 3) range = skinType <= 2 ? "45–60 minutes" : "60–90 minutes";
+  else if (uvIndex < 6) range = skinType <= 2 ? "20–30 minutes" : "30–45 minutes";
+  else if (uvIndex < 8) range = skinType <= 2 ? "15–20 minutes" : "20–30 minutes";
+  else if (uvIndex < 11) range = skinType <= 2 ? "10–15 minutes" : "15–20 minutes";
+  else range = "10 minutes or less";
+
+  return `${range}, then take a shade break and recheck the UV. This is a planning guide, not a safe exposure limit.`;
+}
+
+function chooseBestOutdoorPlan(
+  times: string[],
+  uvValues: number[],
+  isDayValues: number[],
+  currentTime: string,
+  skinType: number,
+): OutdoorPlan {
+  const currentHour = currentTime.slice(0, 13);
+  const allDaylightIndexes = times
+    .map((time, index) => ({ time: String(time), index }))
+    .filter(({ time, index }) => {
       const hour = Number(time.slice(11, 13));
-      return hour >= 8 && hour <= 18;
-    });
+      return isDayValues[index] === 1 && hour >= 6 && hour <= 20;
+    })
+    .map(({ index }) => index);
 
-  if (!daySlots.length) {
-    return "later today when the sun is lower";
-  }
+  const futureDaylightIndexes = allDaylightIndexes.filter(
+    (index) => String(times[index]).slice(0, 13) >= currentHour,
+  );
+  const availableIndexes = futureDaylightIndexes.length ? futureDaylightIndexes : allDaylightIndexes;
+  const firstIndex = availableIndexes[0] ?? 0;
+  const targetDate = String(times[firstIndex] ?? currentTime).slice(0, 10);
+  const dayIndexes = allDaylightIndexes.filter((index) => String(times[index]).startsWith(targetDate));
+  const candidates = availableIndexes.filter((index) => String(times[index]).startsWith(targetDate));
+  const bestIndex = candidates.reduce((best, index) => {
+    const candidateUv = uvValues[index] ?? Number.POSITIVE_INFINITY;
+    const bestUv = uvValues[best] ?? Number.POSITIVE_INFINITY;
+    return candidateUv < bestUv ? index : best;
+  }, candidates[0]);
 
-  const safeSlots = daySlots.filter((slot) => slot.uv <= 3);
-  if (safeSlots.length) {
-    return `${safeSlots[0].time.slice(11, 16)} when UV is lowest today`;
-  }
+  const bestIsoTime = String(times[bestIndex] ?? currentTime);
+  const endIsoTime = String(times[bestIndex + 1] ?? bestIsoTime);
+  const dayPrefix = targetDate === currentTime.slice(0, 10) ? "" : "Tomorrow ";
+  const bestTime = `${dayPrefix}${formatClock(bestIsoTime)}`;
+  const bestWindow = `${dayPrefix}${formatClock(bestIsoTime)}–${formatClock(endIsoTime)}`;
+  const bestUv = Math.round((uvValues[bestIndex] ?? 0) * 10) / 10;
 
-  const bestSlot = daySlots.reduce((best, slot) => (slot.uv < best.uv ? slot : best), daySlots[0]);
-  return `${bestSlot.time.slice(11, 16)} when UV is most moderate`;
+  return {
+    bestIndex,
+    bestTime,
+    bestWindow,
+    bestUv,
+    recommendedTime: getRecommendedOutdoorTime(bestUv, skinType),
+    dayIndexes,
+  };
 }
 
 const initialForecast: WeatherSafetyResponse = {
@@ -260,7 +305,9 @@ const initialForecast: WeatherSafetyResponse = {
   best_time: "5:00 PM",
   air_quality_index: undefined,
   air_quality_category: "Good",
-  best_outdoor_window: "Late afternoon around 5:00 PM",
+  best_outdoor_window: "5:00 PM–6:00 PM",
+  best_window_uv: 3,
+  recommended_outdoor_time: "30–45 minutes, then take a shade break and recheck the UV. This is a planning guide, not a safe exposure limit.",
   sunscreen_advice: "SPF 30+, reapply every 2 hours, and cover exposed skin.",
   clothing_advice: "Light layers with a brimmed hat, sunglasses, and UV-protective fabric.",
   hydration_advice: "Stay hydrated and avoid long sun exposure during peak hours.",
@@ -274,11 +321,11 @@ const initialForecast: WeatherSafetyResponse = {
     "Seek shade around midday",
   ],
   hourly_uv: [
-    { time: "09:00", uv: 3 },
-    { time: "11:00", uv: 6 },
-    { time: "13:00", uv: 8 },
-    { time: "15:00", uv: 7 },
-    { time: "17:00", uv: 3 },
+    { time: "9:00 AM", uv: 3 },
+    { time: "11:00 AM", uv: 6 },
+    { time: "1:00 PM", uv: 8 },
+    { time: "3:00 PM", uv: 7 },
+    { time: "5:00 PM", uv: 3 },
   ],
 };
 
@@ -404,10 +451,6 @@ export function WeatherSafetyAdvisor({ initialLocation, skinType }: WeatherSafet
     [forecast, resolvedSkinType, timeOutside],
   );
 
-  const burnTime = useMemo(
-    () => calculateBurnTime(forecast.uv_index, resolvedSkinType),
-    [forecast.uv_index, resolvedSkinType],
-  );
   const displayTemp = unit === "F" ? forecast.temperature : Math.round((forecast.temperature - 32) * (5 / 9));
   const displayFeelsLike = unit === "F" ? forecast.feels_like : Math.round((forecast.feels_like - 32) * (5 / 9));
   const safetyProgress = Math.max(0, Math.min(100, advisory.score));
@@ -460,8 +503,8 @@ export function WeatherSafetyAdvisor({ initialLocation, skinType }: WeatherSafet
         latitude: String(latitude),
         longitude: String(longitude),
         current: "temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,cloud_cover",
-        hourly: "uv_index",
-        forecast_days: "1",
+        hourly: "uv_index,is_day",
+        forecast_days: "2",
         temperature_unit: "fahrenheit",
         wind_speed_unit: "mph",
         timezone: "auto",
@@ -479,6 +522,7 @@ export function WeatherSafetyAdvisor({ initialLocation, skinType }: WeatherSafet
       const hourly = weatherPayload?.hourly ?? {};
       const times = hourly.time ?? [];
       const uvValues = (hourly.uv_index ?? []).map((value: unknown) => Number(value ?? 0));
+      const isDayValues = (hourly.is_day ?? []).map((value: unknown) => Number(value ?? 0));
 
       if (!current || !uvValues.length) {
         throw new Error("Weather provider response is missing required fields.");
@@ -494,16 +538,16 @@ export function WeatherSafetyAdvisor({ initialLocation, skinType }: WeatherSafet
         }
       }
 
-      const lowestUv = uvValues.reduce((min, value) => Math.min(min, value), Number.POSITIVE_INFINITY);
-      const bestTimeIndex = uvValues.indexOf(lowestUv);
-      const bestTime = bestTimeIndex >= 0 && times[bestTimeIndex]
-        ? String(times[bestTimeIndex]).slice(11, 16)
-        : "Late afternoon";
-      const bestOutdoorWindow = chooseBestOutdoorWindow(times, uvValues);
+      const outdoorPlan = chooseBestOutdoorPlan(times, uvValues, isDayValues, currentTime, resolvedSkinType);
 
-      const peakUv = Math.max(...uvValues);
-      const peakIndexes = uvValues
-        .map((value, index) => (value === peakUv ? index : -1))
+      const currentDate = currentTime.slice(0, 10);
+      const todayIndexes = times
+        .map((time: unknown, index: number) => (String(time).startsWith(currentDate) ? index : -1))
+        .filter((index: number) => index >= 0);
+      const todayUvValues = todayIndexes.map((index: number) => uvValues[index]);
+      const peakUv = Math.max(...todayUvValues);
+      const peakIndexes = todayIndexes
+        .map((index: number) => (uvValues[index] === peakUv ? index : -1))
         .filter((index) => index >= 0);
       const startTime = peakIndexes.length
         ? String(times[peakIndexes[0]]).slice(11, 16)
@@ -526,11 +570,14 @@ export function WeatherSafetyAdvisor({ initialLocation, skinType }: WeatherSafet
       const clothingAdvice = getClothingAdvice(temperature, currentUv, condition);
       const hydrationAdvice = getHydrationAdvice(temperature, humidity, timeOutside);
 
-      const sampleIndexes = [9, 11, 13, 15, 17];
+      const preferredHours = new Set([8, 11, 14, 17]);
+      const sampleIndexes = Array.from(new Set([
+        ...outdoorPlan.dayIndexes.filter((index) => preferredHours.has(Number(String(times[index]).slice(11, 13)))),
+        outdoorPlan.bestIndex,
+      ])).sort((a, b) => a - b).slice(0, 5);
       const hourlyUv = sampleIndexes
-        .filter((index) => index < times.length)
         .map((index) => ({
-          time: String(times[index]).slice(11, 16),
+          time: `${String(times[index]).slice(0, 10) === currentDate ? "" : "Tomorrow "}${formatClock(String(times[index]))}`,
           uv: Math.round((uvValues[index] ?? 0) * 10) / 10,
         }));
 
@@ -546,8 +593,10 @@ export function WeatherSafetyAdvisor({ initialLocation, skinType }: WeatherSafet
         wind_mph: Math.round(windMph * 10) / 10,
         cloud_cover: Math.round(cloudCover),
         peak_window: `${startTime} - ${endTime}`,
-        best_time: bestTime,
-        best_outdoor_window: bestOutdoorWindow,
+        best_time: outdoorPlan.bestTime,
+        best_outdoor_window: outdoorPlan.bestWindow,
+        best_window_uv: outdoorPlan.bestUv,
+        recommended_outdoor_time: outdoorPlan.recommendedTime,
         sunscreen_advice: sunscreenAdvice,
         clothing_advice: clothingAdvice,
         hydration_advice: hydrationAdvice,
@@ -628,6 +677,7 @@ export function WeatherSafetyAdvisor({ initialLocation, skinType }: WeatherSafet
       ...prev,
       sunscreen_advice: getSunscreenAdvice(prev.uv_index, resolvedSkinType),
       hydration_advice: getHydrationAdvice(prev.temperature, prev.humidity, timeOutside),
+      recommended_outdoor_time: getRecommendedOutdoorTime(prev.best_window_uv, resolvedSkinType),
       actions: getProtectionActions(prev.uv_index, resolvedSkinType, timeOutside),
     }));
   }, [timeOutside, resolvedSkinType]);
@@ -775,12 +825,13 @@ export function WeatherSafetyAdvisor({ initialLocation, skinType }: WeatherSafet
                 Peak UV: <strong className="text-white/80">{forecast.peak_window}</strong>
                 {" · "}Best window: <strong className="text-white/80">{forecast.best_time}</strong>
               </p>
-              {burnTime !== null && forecast.uv_index >= 3 && (
-                <p className="text-sm text-amber-300/75">
-                  Unprotected burn time (type {resolvedSkinType}):{" "}
-                  <strong className="text-amber-200">~{burnTime} min</strong>
+              <div className="mt-3 rounded-2xl border border-cyan-200/15 bg-cyan-300/[0.06] p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-100/65">Recommended outdoor plan</p>
+                <p className="mt-2 text-base font-semibold text-white">
+                  {forecast.best_outdoor_window} <span className="font-normal text-white/55">· UV {forecast.best_window_uv.toFixed(1)}</span>
                 </p>
-              )}
+                <p className="mt-1.5 text-sm leading-6 text-white/65">{forecast.recommended_outdoor_time}</p>
+              </div>
             </div>
           </motion.article>
 

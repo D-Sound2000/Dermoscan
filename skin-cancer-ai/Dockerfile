@@ -15,7 +15,7 @@ RUN pip install --no-cache-dir \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY api.py gradcam.py model.py ./
+COPY api.py gradcam.py model.py best_model.pth ./
 
 EXPOSE 8000
 

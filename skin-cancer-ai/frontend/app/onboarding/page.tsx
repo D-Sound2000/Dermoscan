@@ -17,7 +17,7 @@ import {
   Sparkles,
   Shield,
 } from "lucide-react";
-import { createClient } from "@/lib/supabase";
+import { createClient, getValidSession } from "@/lib/supabase";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -603,12 +603,12 @@ export default function OnboardingPage() {
   const [location, setLocation] = useState<{ name: string; lat: number; lng: number } | null>(null);
 
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data }) => {
-      if (!data.session) return;
+    getValidSession(supabase).then(async (session) => {
+      if (!session) return;
       const { data: p } = await supabase
         .from("profiles")
         .select("skin_type, location_name")
-        .eq("id", data.session.user.id)
+        .eq("id", session.user.id)
         .single();
       if (p?.skin_type && p?.location_name) router.replace("/");
       else setStep(1);

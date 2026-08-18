@@ -122,10 +122,12 @@ export default function RuixenMoonChat() {
     adjustHeight(true);
 
     try {
+      const storedReport = window.localStorage.getItem(`dermoscan.report.${trimmedReportId}`);
+      const report = storedReport ? JSON.parse(storedReport) : null;
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: trimmedMessage, reportId: trimmedReportId }),
+        body: JSON.stringify({ message: trimmedMessage, reportId: trimmedReportId, report }),
       });
       const payload = await response.json().catch(() => null);
 

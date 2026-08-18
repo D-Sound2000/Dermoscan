@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, ScanLine } from "lucide-react";
 import { WeatherSafetyAdvisor } from "@/components/ui/weather-safety-advisor";
-import { createClient } from "@/lib/supabase";
+import { createClient, getValidSession } from "@/lib/supabase";
 
 type LocationState = {
   name: string;
@@ -21,15 +21,15 @@ export default function UVSafetyPage() {
 
   useEffect(() => {
     const supabase = createClient();
-    supabase.auth.getSession().then(async ({ data }) => {
-      if (!data.session) {
+    getValidSession(supabase).then(async (session) => {
+      if (!session) {
         router.replace("/onboarding");
         return;
       }
       const { data: profile } = await supabase
         .from("profiles")
         .select("skin_type, location_name, latitude, longitude")
-        .eq("id", data.session.user.id)
+        .eq("id", session.user.id)
         .single();
 
       if (!profile?.skin_type || !profile?.location_name) {

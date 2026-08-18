@@ -1,5 +1,6 @@
-frontend/
 venv/
+frontend/node_modules/
+frontend/.next/
 __pycache__/
 *.pyc
 *.pyo
@@ -12,7 +13,6 @@ build/
 *.ipynb
 *.log
 *.err.log
-best_model.pth
 checkpoints/
 data/
 .scan_reports.json

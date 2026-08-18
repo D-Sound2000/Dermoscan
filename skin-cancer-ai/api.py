@@ -58,7 +58,8 @@ except Exception as exc:
 # ── Config ────────────────────────────────────────────────────────────────────
 
 CHECKPOINT_PATH  = Path(os.getenv("CHECKPOINT_PATH", "best_model.pth"))
-REPORT_CACHE_PATH = Path(os.getenv("REPORT_CACHE_PATH", ".scan_reports.json"))
+_DEFAULT_REPORT_CACHE = "/tmp/dermoscan_reports.json" if os.getenv("VERCEL") else ".scan_reports.json"
+REPORT_CACHE_PATH = Path(os.getenv("REPORT_CACHE_PATH", _DEFAULT_REPORT_CACHE))
 _THRESHOLD_ENV   = os.getenv("THRESHOLD")          # explicit override wins
 _THRESHOLD_DEFAULT = 0.2274                         # calibrated threshold (fallback if checkpoint has none)
 
@@ -280,6 +281,7 @@ class Prediction(BaseModel):
 
 
 class PredictionWithHeatmap(BaseModel):
+    report_id: str
     predicted_class: str
     malignant_probability: float
     benign_probability: float
@@ -299,6 +301,7 @@ class Health(BaseModel):
 class ChatRequest(BaseModel):
     message: str
     reportId: str
+    report: dict[str, Any] | None = None
 
 
 class ChatResponse(BaseModel):
@@ -548,6 +551,8 @@ async def _read_upload_image(file: UploadFile) -> Image.Image:
     raw = await file.read()
     if not raw:
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+    if len(raw) > 4 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Image is too large. Upload an image under 4 MB.")
 
     try:
         return Image.open(io.BytesIO(raw)).convert("RGB")
@@ -653,6 +658,37 @@ def _gemini_prompt(report: dict[str, Any], question: str) -> str:
         f"{question.strip()}\n\n"
         "Answer using the report context. Explain report findings, ABCDE criteria, and risk levels when relevant."
     )
+
+
+def _client_report_context(report_id: str, payload: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Accept only the scan fields needed for educational chat context."""
+    if not isinstance(payload, dict) or payload.get("report_id") != report_id:
+        return None
+
+    predicted_class = payload.get("predicted_class")
+    if predicted_class not in CLASSES:
+        return None
+
+    try:
+        malignant_probability = float(payload["malignant_probability"])
+        benign_probability = float(payload["benign_probability"])
+        threshold_used = float(payload["threshold_used"])
+    except (KeyError, TypeError, ValueError):
+        return None
+
+    if not all(0 <= value <= 1 for value in (malignant_probability, benign_probability, threshold_used)):
+        return None
+
+    return {
+        "report_id": report_id,
+        "predicted_class": predicted_class,
+        "risk_level": _risk_level(malignant_probability),
+        "malignant_probability": malignant_probability,
+        "benign_probability": benign_probability,
+        "threshold_used": threshold_used,
+        "model": "DenseNet121",
+        "explainability": "Grad-CAM" if payload.get("heatmap_image") else "not requested",
+    }
 
 
 def _extract_gemini_text(payload: dict[str, Any]) -> str:
@@ -776,22 +812,9 @@ async def predict(file: UploadFile = File(...)) -> Prediction:
     image = await _read_upload_image(file)
 
     if _model is None or torch is None or _preprocess is None:
-        predicted, malignant_prob, benign_prob = _heuristic_prediction(image)
-        recommendation = FALLBACK_RECOMMENDATIONS[predicted]
-        report_id = _store_report(
-            predicted_class=predicted,
-            malignant_probability=malignant_prob,
-            benign_probability=benign_prob,
-            recommendation=recommendation,
-            heatmap_generated=False,
-        )
-        return Prediction(
-            report_id=report_id,
-            predicted_class=predicted,
-            malignant_probability=malignant_prob,
-            benign_probability=benign_prob,
-            threshold_used=THRESHOLD,
-            recommendation=recommendation,
+        raise HTTPException(
+            status_code=503,
+            detail="The trained DermoScan model is not available. Please try again shortly.",
         )
 
     tensor = _preprocess(image).unsqueeze(0).to(_device)
@@ -826,23 +849,9 @@ async def predict_with_heatmap(file: UploadFile = File(...)) -> PredictionWithHe
     image = await _read_upload_image(file)
 
     if _model is None or torch is None or _preprocess is None:
-        predicted, malignant_prob, benign_prob = _heuristic_prediction(image)
-        recommendation = FALLBACK_RECOMMENDATIONS[predicted]
-        report_id = _store_report(
-            predicted_class=predicted,
-            malignant_probability=malignant_prob,
-            benign_probability=benign_prob,
-            recommendation=recommendation,
-            heatmap_generated=True,
-        )
-        return PredictionWithHeatmap(
-            report_id=report_id,
-            predicted_class=predicted,
-            malignant_probability=malignant_prob,
-            benign_probability=benign_prob,
-            threshold_used=THRESHOLD,
-            recommendation=recommendation,
-            heatmap_image=_fallback_heatmap(image),
+        raise HTTPException(
+            status_code=503,
+            detail="The trained DermoScan model is not available. Please try again shortly.",
         )
 
     # Preprocess (same pipeline as /predict)
@@ -916,8 +925,10 @@ async def chat(request: ChatRequest) -> ChatResponse:
     message = request.message.strip()
     if not message:
         raise HTTPException(status_code=400, detail="Message is required.")
+    if len(message) > 1000:
+        raise HTTPException(status_code=400, detail="Message must be 1,000 characters or fewer.")
 
-    report = SCAN_REPORTS.get(request.reportId)
+    report = SCAN_REPORTS.get(request.reportId) or _client_report_context(request.reportId, request.report)
     if report is None:
         raise HTTPException(status_code=404, detail="Scan report not found for reportId.")
 

@@ -174,6 +174,17 @@ export function createClient() {
   return createBrowserClient(supabaseUrl!, supabaseAnonKey!);
 }
 
+export async function getValidSession(client: ReturnType<typeof createBrowserClient>) {
+  const { data, error } = await client.auth.getSession();
+
+  if (error) {
+    await client.auth.signOut({ scope: "local" }).catch(() => undefined);
+    return null;
+  }
+
+  return data.session;
+}
+
 export type Profile = {
   id: string;
   skin_type: number | null;
