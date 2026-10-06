@@ -75,8 +75,8 @@ IMAGENET_STD  = [0.229, 0.224, 0.225]
 IMAGE_SIZE    = 224
 
 RECOMMENDATIONS = {
-    "Benign":    "Lesion appears benign. Continue routine skin self-exams and annual dermatology check-ups.",
-    "Malignant": "Lesion flagged as potentially malignant. Please consult a dermatologist promptly for further evaluation.",
+    "Benign":    "The model classified this image as benign. It cannot rule out disease; monitor visible changes and seek care for concerning symptoms.",
+    "Malignant": "The model classified this image as malignant. Please arrange evaluation by a qualified clinician.",
 }
 
 FALLBACK_RECOMMENDATIONS = {
@@ -858,27 +858,9 @@ async def predict_with_heatmap(file: UploadFile = File(...)) -> PredictionWithHe
     tensor = _preprocess(image).unsqueeze(0).to(_device)
 
     if GradCAM is None or overlay_heatmap is None or pil_to_base64 is None:
-        with torch.no_grad():
-            probs = torch.softmax(_model(tensor), dim=1).squeeze(0).cpu().tolist()
-        benign_prob    = round(probs[0], 4)
-        malignant_prob = round(probs[1], 4)
-        predicted      = "Malignant" if malignant_prob >= THRESHOLD else "Benign"
-        recommendation = RECOMMENDATIONS[predicted]
-        report_id = _store_report(
-            predicted_class=predicted,
-            malignant_probability=malignant_prob,
-            benign_probability=benign_prob,
-            recommendation=recommendation,
-            heatmap_generated=True,
-        )
-        return PredictionWithHeatmap(
-            report_id=report_id,
-            predicted_class=predicted,
-            malignant_probability=malignant_prob,
-            benign_probability=benign_prob,
-            threshold_used=THRESHOLD,
-            recommendation=recommendation,
-            heatmap_image=_fallback_heatmap(image),
+        raise HTTPException(
+            status_code=503,
+            detail="Model explainability is temporarily unavailable; no substitute heatmap was generated.",
         )
 
     # ── Grad-CAM (single forward+backward pass — probabilities come from here) ──

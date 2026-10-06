@@ -100,11 +100,23 @@ function createDemoClient() {
         return {
           select() {
             return {
-              async eq(column: string, value: string) {
+              eq(column: string, value: string) {
                 const scans = readJson<Scan[]>(SCANS_KEY, []);
+                const data = scans.filter((scan) => scan[column as keyof Scan] === value);
                 return {
-                  data: scans.filter((scan) => scan[column as keyof Scan] === value),
+                  data,
                   error: null,
+                  order(_field: string, options?: { ascending?: boolean }) {
+                    const sorted = [...data].sort((a, b) =>
+                      options?.ascending === false
+                        ? b.scanned_at.localeCompare(a.scanned_at)
+                        : a.scanned_at.localeCompare(b.scanned_at),
+                    );
+                    return Promise.resolve({ data: sorted, error: null });
+                  },
+                  then(resolve: (value: { data: Scan[]; error: null }) => unknown) {
+                    return Promise.resolve({ data, error: null }).then(resolve);
+                  },
                 };
               },
             };
@@ -205,4 +217,8 @@ export type Scan = {
   predicted_class: string;
   report_id: string;
   scanned_at: string;
+  image_preview?: string | null;
+  image_quality_score?: number | null;
+  body_location?: string | null;
+  symptoms?: string | null;
 };

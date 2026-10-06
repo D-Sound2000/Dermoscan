@@ -8,6 +8,8 @@ import { MeshGradient } from "@paper-design/shaders-react";
 import {
   Activity,
   ArrowLeft,
+  FileText,
+  Images,
   Minus,
   ScanLine,
   TrendingDown,
@@ -25,22 +27,22 @@ function toSafeId(s: string) {
     .replace(/^-|-$/g, "");
 }
 
-function riskTextColor(v: number) {
+function scoreTextColor(v: number) {
   if (v > 0.6) return "text-orange-300";
   if (v > 0.3) return "text-yellow-300";
   return "text-emerald-300";
 }
 
-function riskBadgeStyle(v: number) {
+function scoreBadgeStyle(v: number) {
   if (v > 0.6) return "bg-orange-400/10 border-orange-400/25 text-orange-300";
   if (v > 0.3) return "bg-yellow-400/10 border-yellow-400/25 text-yellow-300";
   return "bg-emerald-400/10 border-emerald-400/25 text-emerald-300";
 }
 
-function riskLabel(v: number) {
-  if (v > 0.6) return "High risk";
+function scoreLabel(v: number) {
+  if (v > 0.6) return "Malignant";
   if (v > 0.3) return "Moderate";
-  return "Low risk";
+  return "Benign";
 }
 
 // ─── Chart component ──────────────────────────────────────────────────────────
@@ -250,17 +252,17 @@ function MoleCard({ mole, index }: { mole: MoleGroup; index: number }) {
 
           <div className="shrink-0 flex flex-col items-end gap-1.5">
             <span
-              className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${riskBadgeStyle(mole.latestRisk)}`}
+              className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${scoreBadgeStyle(mole.latestRisk)}`}
             >
               {Math.round(mole.latestRisk * 100)}%
             </span>
-            <span className={`text-[10px] font-medium ${riskTextColor(mole.latestRisk)}`}>
-              {riskLabel(mole.latestRisk)}
+            <span className={`text-[10px] font-medium ${scoreTextColor(mole.latestRisk)}`}>
+              {scoreLabel(mole.latestRisk)}
             </span>
           </div>
         </div>
 
-        {/* Trend indicator */}
+        {/* Score variability indicator */}
         {mole.scanCount > 1 && (
           <div
             className={`mt-3 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium ${
@@ -279,10 +281,10 @@ function MoleCard({ mole, index }: { mole: MoleGroup; index: number }) {
               <Minus className="size-3" />
             )}
             {isUp
-              ? `+${trendPct}% since last scan`
+              ? `Model score +${trendPct}% since last scan`
               : isDown
-              ? `-${trendPct}% since last scan`
-              : "Stable since last scan"}
+              ? `Model score -${trendPct}% since last scan`
+              : "Model score similar to last scan"}
           </div>
         )}
 
@@ -294,18 +296,33 @@ function MoleCard({ mole, index }: { mole: MoleGroup; index: number }) {
         )}
       </div>
 
+      {mole.scans.some((scan) => scan.image_preview) && (
+        <div className="border-t border-white/[0.05] px-5 py-4">
+          <div className="mb-3 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-widest text-white/35">
+            <Images className="size-3.5" /> Latest visual comparison
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            {mole.scans.slice(-2).map((scan, scanIndex) => (
+              <div key={scan.id} className="overflow-hidden rounded-xl border border-white/10 bg-black/25">
+                {scan.image_preview ? <img src={scan.image_preview} alt={`${mole.label} capture ${scanIndex + 1}`} className="aspect-square w-full object-cover" /> : <div className="grid aspect-square place-items-center text-xs text-white/25">No image</div>}
+                <p className="px-2 py-1.5 text-[10px] text-white/45">{new Date(scan.scanned_at).toLocaleDateString()}</p>
+              </div>
+            ))}
+          </div>
+          <p className="mt-2 text-[10px] leading-4 text-white/35">Compare visible shape, border, color, and size. Score changes can also come from lighting or framing.</p>
+        </div>
+      )}
+
       {/* Chart */}
       <div className="px-4 pb-1 border-t border-white/[0.05] pt-3">
         <RiskSparkline scans={mole.scans} chartId={mole.label} />
       </div>
 
       {/* Footer */}
-      <div className="px-5 py-3 border-t border-white/[0.05]">
-        <Link
-          href="/#scan"
-          className="text-xs text-cyan-300/60 hover:text-cyan-300 transition-colors"
-        >
-          Scan again →
+      <div className="flex items-center justify-between gap-3 px-5 py-3 border-t border-white/[0.05]">
+        <Link href="/#scan" className="text-xs text-cyan-300/60 hover:text-cyan-300 transition-colors">Scan again →</Link>
+        <Link href={`/report?mole=${encodeURIComponent(mole.label)}`} className="inline-flex items-center gap-1.5 text-xs text-white/55 transition hover:text-white">
+          <FileText className="size-3.5" /> Prepare report
         </Link>
       </div>
     </motion.div>
@@ -466,7 +483,7 @@ export default function MyMolesPage() {
         <div className="flex items-center gap-2">
           <Activity size={15} className="text-cyan-300/70" />
           <span className="text-sm font-medium text-white/60">
-            Evolution Tracker
+            Visual Change Tracker
           </span>
         </div>
       </div>
@@ -487,12 +504,16 @@ export default function MyMolesPage() {
               transition={{ duration: 0.4 }}
               className="mb-8"
             >
-              <h1 className="text-2xl font-bold text-white">My Moles</h1>
+              <h1 className="text-2xl font-bold text-white">Lesion History</h1>
               <p className="mt-1 text-sm text-white/40">
                 {moles.length} mole{moles.length !== 1 ? "s" : ""} tracked ·
-                each scan is a new data point on the evolution chart
+                compare documented images and model scores over time
               </p>
             </motion.div>
+
+            <div className="mb-6 rounded-2xl border border-cyan-300/20 bg-cyan-300/[0.06] px-4 py-3 text-xs leading-5 text-white/55">
+              Model scores are shown for transparency, but they are not a measurement of cancer growth. Use consistently framed photos and focus on visible change; seek professional care for changing, bleeding, painful, or otherwise concerning lesions.
+            </div>
 
             <div className="grid gap-4 md:grid-cols-2">
               {moles.map((mole, i) => (

@@ -6,6 +6,7 @@ import { MeshGradient, PulsingBorder } from "@paper-design/shaders-react";
 import { motion, useReducedMotion } from "framer-motion";
 import {
   Activity,
+  AlertTriangle,
   BarChart3,
   BookmarkPlus,
   Camera,
@@ -26,9 +27,10 @@ import {
 } from "lucide-react";
 import { Header } from "@/components/ui/header-2";
 import { createClient } from "@/lib/supabase";
+import { analyzeImageQuality, createPrivatePreview, type ImageQualityResult } from "@/lib/image-quality";
 
 const signalCards = [
-  { label: "Validation AUC", value: "93%", icon: BarChart3 },
+  { label: "Model evidence", value: "Model card", icon: BarChart3 },
   { label: "Inference Model", value: "DenseNet", icon: Microscope },
   { label: "Explainability", value: "Grad-CAM", icon: FileScan },
   { label: "Use Case", value: "Review", icon: ShieldCheck },
@@ -71,6 +73,10 @@ export default function ShaderShowcase() {
   const [existingMoles, setExistingMoles] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [savedMole, setSavedMole] = useState<string | null>(null);
+  const [imageQuality, setImageQuality] = useState<ImageQualityResult | null>(null);
+  const [isCheckingQuality, setIsCheckingQuality] = useState(false);
+  const [bodyLocation, setBodyLocation] = useState("");
+  const [symptoms, setSymptoms] = useState("");
 
   useEffect(() => {
     const container = containerRef.current;
@@ -94,7 +100,7 @@ export default function ShaderShowcase() {
     };
   }, [previewUrl]);
 
-  const chooseFile = (file: File | undefined) => {
+  const chooseFile = async (file: File | undefined) => {
     if (!file) return;
 
     if (!["image/jpeg", "image/jpg", "image/png"].includes(file.type)) {
@@ -108,6 +114,15 @@ export default function ShaderShowcase() {
     setPrediction(null);
     setHeatmapImage(null);
     setUploadError(null);
+    setImageQuality(null);
+    setIsCheckingQuality(true);
+    try {
+      setImageQuality(await analyzeImageQuality(file));
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : "Could not check image quality.");
+    } finally {
+      setIsCheckingQuality(false);
+    }
   };
 
   const clearSelection = () => {
@@ -117,6 +132,7 @@ export default function ShaderShowcase() {
     setPrediction(null);
     setHeatmapImage(null);
     setUploadError(null);
+    setImageQuality(null);
     if (inputRef.current) inputRef.current.value = "";
   };
 
@@ -148,6 +164,10 @@ export default function ShaderShowcase() {
   const analyzeFile = async () => {
     if (!selectedFile) {
       inputRef.current?.click();
+      return;
+    }
+    if (!imageQuality?.passed) {
+      setUploadError("Please address the image-quality warnings before running the model.");
       return;
     }
 
@@ -198,6 +218,8 @@ export default function ShaderShowcase() {
     const labels = allLabels.filter((v: string, i: number, a: string[]) => a.indexOf(v) === i);
     setExistingMoles(labels);
     setMoleInput("");
+    setBodyLocation("");
+    setSymptoms("");
     setShowSaveModal(true);
   };
 
@@ -206,14 +228,24 @@ export default function ShaderShowcase() {
     const { data: { user } } = await supabaseRef.current.auth.getUser();
     if (!user) return;
     setIsSaving(true);
-    await supabaseRef.current.from("scans").insert({
+    const imagePreview = selectedFile ? await createPrivatePreview(selectedFile) : null;
+    const { error } = await supabaseRef.current.from("scans").insert({
       user_id: user.id,
       mole_label: moleInput.trim(),
       malignant_probability: prediction.malignant_probability,
       benign_probability: prediction.benign_probability,
       predicted_class: prediction.predicted_class,
       report_id: prediction.report_id,
+      image_preview: imagePreview,
+      image_quality_score: imageQuality?.score ?? null,
+      body_location: bodyLocation.trim() || null,
+      symptoms: symptoms.trim() || null,
     });
+    if (error) {
+      setUploadError("The scan could not be saved. Please try again.");
+      setIsSaving(false);
+      return;
+    }
     setIsSaving(false);
     setSavedMole(moleInput.trim());
     setShowSaveModal(false);
@@ -318,7 +350,7 @@ export default function ShaderShowcase() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.68 }}
             >
-              Upload a lesion. Get a score, a heatmap, and the reasoning behind both.
+              Document a lesion, review an AI model score, and prepare useful information for professional evaluation.
             </motion.p>
 
             <motion.div
@@ -447,6 +479,25 @@ export default function ShaderShowcase() {
                       ) : null}
                     </div>
                   </div>
+                  {isCheckingQuality ? (
+                    <div className="rounded-2xl border border-cyan-200/20 bg-cyan-100/10 px-4 py-3 text-sm text-cyan-50/80">
+                      Checking focus, lighting, resolution, and glare…
+                    </div>
+                  ) : imageQuality ? (
+                    <div className={`rounded-2xl border px-4 py-3 ${imageQuality.passed ? "border-emerald-300/25 bg-emerald-300/10" : "border-orange-300/30 bg-orange-300/10"}`}>
+                      <p className="flex items-center gap-2 text-sm font-semibold text-white">
+                        {imageQuality.passed ? <Check className="size-4 text-emerald-300" /> : <AlertTriangle className="size-4 text-orange-300" />}
+                        Image quality: {imageQuality.score}/100
+                      </p>
+                      {imageQuality.issues.length > 0 ? (
+                        <ul className="mt-2 space-y-1 text-xs leading-5 text-white/70">
+                          {imageQuality.guidance.map((item) => <li key={item}>• {item}</li>)}
+                        </ul>
+                      ) : (
+                        <p className="mt-1 text-xs text-white/60">Image passed basic technical checks. This does not validate that it is a skin lesion.</p>
+                      )}
+                    </div>
+                  ) : null}
                 </div>
               </div>
 
@@ -506,6 +557,11 @@ export default function ShaderShowcase() {
                     </div>
                   </div>
                 </div>
+                {prediction ? (
+                  <p className="mt-3 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-[11px] leading-5 text-white/55">
+                    These percentages are model output scores, not your probability of having cancer. DermoScan cannot diagnose or rule out disease.
+                  </p>
+                ) : null}
 
                 {heatmapImage ? (
                   <div className="mt-4 overflow-hidden rounded-[1.2rem] border border-white/[0.08] bg-black/30">
@@ -521,7 +577,7 @@ export default function ShaderShowcase() {
                   <motion.button
                     type="button"
                     onClick={analyzeFile}
-                    disabled={isSubmitting || isHeatmapLoading}
+                    disabled={isSubmitting || isHeatmapLoading || isCheckingQuality || (!!selectedFile && !imageQuality?.passed)}
                     whileHover={isSubmitting || isHeatmapLoading ? undefined : { scale: 1.03 }}
                     whileTap={isSubmitting || isHeatmapLoading ? undefined : { scale: 0.97 }}
                     className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-gradient-to-r from-cyan-500 to-orange-500 px-6 text-sm font-semibold text-white shadow-lg shadow-cyan-950/35 transition hover:from-cyan-400 hover:to-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
@@ -564,7 +620,7 @@ export default function ShaderShowcase() {
                         Track evolution
                       </p>
                       <p className="mt-0.5 truncate text-[11px] text-white/60">
-                        Save to mole history to chart risk over time
+                        Save the image and context to compare visible change over time
                       </p>
                     </div>
                     <button
@@ -642,7 +698,7 @@ export default function ShaderShowcase() {
           <motion.div
             initial={{ opacity: 0, scale: 0.96, y: 8 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            className="relative w-full max-w-sm rounded-[1.5rem] border border-white/20 bg-[#0c1e28] p-6 shadow-2xl"
+            className="relative max-h-[90vh] w-full max-w-sm overflow-y-auto rounded-[1.5rem] border border-white/20 bg-[#0c1e28] p-6 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-4 flex items-center gap-3">
@@ -651,7 +707,7 @@ export default function ShaderShowcase() {
               </div>
               <div>
                 <h3 className="text-base font-semibold text-white">Save scan</h3>
-                <p className="text-[11px] text-white/55">Track this mole&apos;s risk over time</p>
+                <p className="text-[11px] text-white/55">Document visible change over time</p>
               </div>
             </div>
 
@@ -695,6 +751,29 @@ export default function ShaderShowcase() {
                 className="w-full rounded-xl border border-white/20 bg-[#071318] px-4 py-2.5 text-sm text-white placeholder:text-white/35 focus:border-cyan-400/60 focus:outline-none"
                 autoFocus
               />
+            </div>
+
+            <div className="mb-4 grid gap-3">
+              <label className="block">
+                <span className="mb-1.5 block text-[10px] uppercase tracking-widest text-white/50">Body location</span>
+                <input
+                  type="text"
+                  value={bodyLocation}
+                  onChange={(e) => setBodyLocation(e.target.value)}
+                  placeholder='e.g. "Upper left shoulder"'
+                  className="w-full rounded-xl border border-white/20 bg-[#071318] px-4 py-2.5 text-sm text-white placeholder:text-white/35 focus:border-cyan-400/60 focus:outline-none"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1.5 block text-[10px] uppercase tracking-widest text-white/50">Symptoms or observations (optional)</span>
+                <textarea
+                  value={symptoms}
+                  onChange={(e) => setSymptoms(e.target.value.slice(0, 300))}
+                  placeholder="Itching, bleeding, growth, color change, or none noticed"
+                  className="min-h-20 w-full resize-none rounded-xl border border-white/20 bg-[#071318] px-4 py-2.5 text-sm text-white placeholder:text-white/35 focus:border-cyan-400/60 focus:outline-none"
+                />
+              </label>
+              <p className="text-[10px] leading-4 text-white/40">A compressed preview is stored privately with your account for comparison and is not used to train the model.</p>
             </div>
 
             <div className="flex gap-2">

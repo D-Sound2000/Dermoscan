@@ -4,11 +4,15 @@ AI-assisted skin lesion classifier built on DenseNet121, trained on ISIC data.
 
 ## What it does
 
-Classifies dermoscopy images as **Benign** or **Malignant** with a confidence score and Grad-CAM heatmap highlighting the regions that influenced the prediction.
+Produces benign and malignant research-model scores for dermoscopy images and a Grad-CAM heatmap highlighting regions that influenced the malignant output. DermoScan is an educational documentation and triage-support project, not a diagnostic device.
 
-- **Model**: DenseNet121 — epoch 13, val AUC 0.9869
+- **Model**: DenseNet121 binary research classifier
 - **Backend**: FastAPI (`/predict`, `/predict-with-heatmap`)
 - **Frontend**: Next.js 14
+- **Safety**: client-side image-quality checks, non-diagnostic language, and no substitute heatmaps
+- **Workflow**: private lesion history, visual comparisons, observations, and printable clinician handoff
+
+The repository contains older experimental multi-class training files alongside the deployed binary API. Reported experiment metrics should not be treated as the performance of the deployed checkpoint until a frozen, reproducible held-out evaluation is published.
 
 ## Running locally
 

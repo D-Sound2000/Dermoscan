@@ -27,6 +27,10 @@ const links = [
     label: 'UV Safety',
     href: '/uv-safety',
   },
+  {
+    label: 'Model Card',
+    href: '/model-card',
+  },
 ];
 
 function ProfileMenu() {
