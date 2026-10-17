@@ -6,7 +6,6 @@ import { MeshGradient, PulsingBorder } from "@paper-design/shaders-react";
 import { motion, useReducedMotion } from "framer-motion";
 import {
   Activity,
-  AlertTriangle,
   BarChart3,
   BookmarkPlus,
   Camera,
@@ -26,7 +25,7 @@ import {
   X,
 } from "lucide-react";
 import { Header } from "@/components/ui/header-2";
-import { createClient } from "@/lib/supabase";
+import { TABLES, createClient } from "@/lib/supabase";
 import { analyzeImageQuality, createPrivatePreview, type ImageQualityResult } from "@/lib/image-quality";
 
 const signalCards = [
@@ -166,10 +165,6 @@ export default function ShaderShowcase() {
       inputRef.current?.click();
       return;
     }
-    if (!imageQuality?.passed) {
-      setUploadError("Please address the image-quality warnings before running the model.");
-      return;
-    }
 
     setIsSubmitting(true);
     setUploadError(null);
@@ -211,7 +206,7 @@ export default function ShaderShowcase() {
     const { data: { user } } = await supabaseRef.current.auth.getUser();
     if (!user) return;
     const { data } = await supabaseRef.current
-      .from("scans")
+      .from(TABLES.scans)
       .select("mole_label")
       .eq("user_id", user.id);
     const allLabels = (data ?? []).map((r: { mole_label: string }) => r.mole_label);
@@ -229,7 +224,7 @@ export default function ShaderShowcase() {
     if (!user) return;
     setIsSaving(true);
     const imagePreview = selectedFile ? await createPrivatePreview(selectedFile) : null;
-    const { error } = await supabaseRef.current.from("scans").insert({
+    const { error } = await supabaseRef.current.from(TABLES.scans).insert({
       user_id: user.id,
       mole_label: moleInput.trim(),
       malignant_probability: prediction.malignant_probability,
@@ -483,19 +478,13 @@ export default function ShaderShowcase() {
                     <div className="rounded-2xl border border-cyan-200/20 bg-cyan-100/10 px-4 py-3 text-sm text-cyan-50/80">
                       Checking focus, lighting, resolution, and glare…
                     </div>
-                  ) : imageQuality ? (
-                    <div className={`rounded-2xl border px-4 py-3 ${imageQuality.passed ? "border-emerald-300/25 bg-emerald-300/10" : "border-orange-300/30 bg-orange-300/10"}`}>
+                  ) : imageQuality?.passed ? (
+                    <div className="rounded-2xl border border-emerald-300/25 bg-emerald-300/10 px-4 py-3">
                       <p className="flex items-center gap-2 text-sm font-semibold text-white">
-                        {imageQuality.passed ? <Check className="size-4 text-emerald-300" /> : <AlertTriangle className="size-4 text-orange-300" />}
+                        <Check className="size-4 text-emerald-300" />
                         Image quality: {imageQuality.score}/100
                       </p>
-                      {imageQuality.issues.length > 0 ? (
-                        <ul className="mt-2 space-y-1 text-xs leading-5 text-white/70">
-                          {imageQuality.guidance.map((item) => <li key={item}>• {item}</li>)}
-                        </ul>
-                      ) : (
-                        <p className="mt-1 text-xs text-white/60">Image passed basic technical checks. This does not validate that it is a skin lesion.</p>
-                      )}
+                      <p className="mt-1 text-xs text-white/60">Image passed basic technical checks. This does not validate that it is a skin lesion.</p>
                     </div>
                   ) : null}
                 </div>
@@ -577,7 +566,7 @@ export default function ShaderShowcase() {
                   <motion.button
                     type="button"
                     onClick={analyzeFile}
-                    disabled={isSubmitting || isHeatmapLoading || isCheckingQuality || (!!selectedFile && !imageQuality?.passed)}
+                    disabled={isSubmitting || isHeatmapLoading || isCheckingQuality}
                     whileHover={isSubmitting || isHeatmapLoading ? undefined : { scale: 1.03 }}
                     whileTap={isSubmitting || isHeatmapLoading ? undefined : { scale: 0.97 }}
                     className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-gradient-to-r from-cyan-500 to-orange-500 px-6 text-sm font-semibold text-white shadow-lg shadow-cyan-950/35 transition hover:from-cyan-400 hover:to-orange-400 disabled:cursor-not-allowed disabled:opacity-60"

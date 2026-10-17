@@ -15,8 +15,8 @@
     },
     "model": {
       "root": ".",
-      "framework": "fastapi",
-      "entrypoint": "api:app"
+      "runtime": "container",
+      "entrypoint": "Dockerfile"
     }
   },
   "rewrites": [

@@ -17,7 +17,7 @@ import {
   Sparkles,
   Shield,
 } from "lucide-react";
-import { createClient, getValidSession } from "@/lib/supabase";
+import { TABLES, createClient, getValidSession } from "@/lib/supabase";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -149,7 +149,7 @@ function StepMFAVerify({
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Session error after verification.");
       const { data: profile } = await supabase
-        .from("profiles").select("skin_type, location_name").eq("id", user.id).single();
+        .from(TABLES.profiles).select("skin_type, location_name").eq("id", user.id).single();
       onDone(!!(profile?.skin_type && profile?.location_name));
     } catch (err: any) {
       setError(err.message ?? "Invalid code. Please try again.");
@@ -249,7 +249,7 @@ function StepAuth({
         }
         // No MFA — check if this user already completed onboarding
         const { data: profile } = await supabase
-          .from("profiles")
+          .from(TABLES.profiles)
           .select("skin_type, location_name")
           .eq("id", data.user.id)
           .single();
@@ -606,7 +606,7 @@ export default function OnboardingPage() {
     getValidSession(supabase).then(async (session) => {
       if (!session) return;
       const { data: p } = await supabase
-        .from("profiles")
+        .from(TABLES.profiles)
         .select("skin_type, location_name")
         .eq("id", session.user.id)
         .single();
@@ -633,7 +633,7 @@ export default function OnboardingPage() {
       const { data: { user }, error: userErr } = await supabase.auth.getUser();
       if (userErr || !user) throw new Error("Not authenticated. Please sign in again.");
 
-      const { error: upsertErr } = await supabase.from("profiles").upsert({
+      const { error: upsertErr } = await supabase.from(TABLES.profiles).upsert({
         id: user.id,
         ...profile,
         location_name: location.name,

@@ -65,8 +65,10 @@ type WeatherSafetyResponse = {
   hourly_uv: WeatherMetric[];
 };
 
-const GEOCODING_ENDPOINT = "/api/weather/search";
-const OPEN_METEO_ENDPOINT = "/api/weather/forecast";
+const GEOCODING_ENDPOINT = "https://geocoding-api.open-meteo.com/v1/search";
+// Open-Meteo supports browser CORS. Direct requests avoid a shared hosting
+// network exhausting the provider's per-IP allowance for every app visitor.
+const OPEN_METEO_ENDPOINT = "https://api.open-meteo.com/v1/forecast";
 
 function _weatherCodeLabel(code: number) {
   const labels: Record<number, string> = {
@@ -428,7 +430,8 @@ export function WeatherSafetyAdvisor({ initialLocation, skinType }: WeatherSafet
   const [suggestions, setSuggestions] = useState<LocationSuggestion[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [forecast, setForecast] = useState<WeatherSafetyResponse>(initialForecast);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [hasForecast, setHasForecast] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [unit, setUnit] = useState<"F" | "C">("F");
   const [timeOutside, setTimeOutside] = useState(60);
@@ -466,6 +469,7 @@ export function WeatherSafetyAdvisor({ initialLocation, skinType }: WeatherSafet
     }
 
     setIsLoading(true);
+    setHasForecast(false);
     setError(null);
 
     try {
@@ -478,7 +482,7 @@ export function WeatherSafetyAdvisor({ initialLocation, skinType }: WeatherSafet
         longitude = coordinates.longitude;
       } else {
         const geocodeUrl = `${GEOCODING_ENDPOINT}?name=${encodeURIComponent(query)}&count=5&language=en&format=json`;
-        const geocodeResponse = await fetch(geocodeUrl);
+        const geocodeResponse = await fetch(geocodeUrl, { signal: AbortSignal.timeout(10000) });
         const geocodePayload = await geocodeResponse.json();
 
         if (!geocodeResponse.ok) {
@@ -511,7 +515,7 @@ export function WeatherSafetyAdvisor({ initialLocation, skinType }: WeatherSafet
       });
 
       const weatherUrl = `${OPEN_METEO_ENDPOINT}?${params.toString()}`;
-      const weatherResponse = await fetch(weatherUrl);
+      const weatherResponse = await fetch(weatherUrl, { signal: AbortSignal.timeout(10000) });
       const weatherPayload = await weatherResponse.json();
 
       if (!weatherResponse.ok) {
@@ -609,6 +613,7 @@ export function WeatherSafetyAdvisor({ initialLocation, skinType }: WeatherSafet
         actions: getProtectionActions(currentUv, resolvedSkinType, timeOutside),
         hourly_uv: hourlyUv,
       });
+      setHasForecast(true);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       setError(
@@ -628,7 +633,7 @@ export function WeatherSafetyAdvisor({ initialLocation, skinType }: WeatherSafet
     }
 
     const suggestionsUrl = `${GEOCODING_ENDPOINT}?name=${encodeURIComponent(query)}&count=5&language=en&format=json`;
-    const response = await fetch(suggestionsUrl);
+    const response = await fetch(suggestionsUrl, { signal: AbortSignal.timeout(10000) });
     const payload = await response.json();
     const results = payload?.results ?? [];
 
@@ -644,10 +649,10 @@ export function WeatherSafetyAdvisor({ initialLocation, skinType }: WeatherSafet
   };
 
   useEffect(() => {
+    if (!showSuggestions) return;
     const timer = setTimeout(() => {
       if (searchQuery.length >= 2) {
-        fetchSuggestions(searchQuery);
-        setShowSuggestions(true);
+        fetchSuggestions(searchQuery).catch(() => setSuggestions([]));
       } else {
         setSuggestions([]);
         setShowSuggestions(false);
@@ -655,7 +660,7 @@ export function WeatherSafetyAdvisor({ initialLocation, skinType }: WeatherSafet
     }, 250);
 
     return () => clearTimeout(timer);
-  }, [searchQuery]);
+  }, [searchQuery, showSuggestions]);
 
   const handleSelectSuggestion = (item: LocationSuggestion) => {
     const label = [item.name, item.admin1, item.country_code].filter(Boolean).join(", ");
@@ -769,6 +774,7 @@ export function WeatherSafetyAdvisor({ initialLocation, skinType }: WeatherSafet
           {error && <p className="text-sm text-amber-300/80">{error}</p>}
         </div>
 
+        {hasForecast && !isLoading ? <>
         {/* Score + Weather — equal two columns */}
         <div className="grid gap-5 lg:grid-cols-2">
           <motion.article
@@ -980,6 +986,10 @@ export function WeatherSafetyAdvisor({ initialLocation, skinType }: WeatherSafet
             ))}
           </div>
         </div>
+        <p className="text-xs text-white/40">Weather data: <a href="https://open-meteo.com/" className="underline">Open-Meteo</a></p>
+        </> : <div role="status" className="rounded-3xl border border-white/10 bg-white/5 p-8 text-sm text-white/65">
+          {isLoading ? "Loading current weather and UV forecast…" : "Weather is unavailable. Choose a location and try Update again."}
+        </div>}
 
       </div>
     </section>

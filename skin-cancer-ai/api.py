@@ -18,6 +18,7 @@ Environment variables:
 from __future__ import annotations
 
 import base64
+import asyncio
 import io
 import json
 import os
@@ -36,6 +37,12 @@ import numpy as np
 from PIL import Image, ImageFilter
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from pydantic import BaseModel
+from report_assistant import (
+    REPORT_ASSISTANT_INSTRUCTIONS,
+    call_compatible_assistant,
+    configured_provider,
+    sanitize_reply,
+)
 
 try:
     import torch
@@ -196,10 +203,18 @@ def load_model(ckpt_path: Path, device: torch.device) -> tuple[nn.Module, float 
 
 # ── Preprocessing ─────────────────────────────────────────────────────────────
 
-_preprocess = (
+_spatial_preprocess = (
     transforms.Compose([
         transforms.Resize(256),
         transforms.CenterCrop(IMAGE_SIZE),
+    ])
+    if transforms is not None
+    else None
+)
+
+_preprocess = (
+    transforms.Compose([
+        _spatial_preprocess,
         transforms.ToTensor(),
         transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD),
     ])
@@ -576,9 +591,10 @@ def _heuristic_prediction(image: Image.Image) -> tuple[str, float, float]:
 
 
 def _center_crop_for_model(image: Image.Image) -> Image.Image:
-    resized = image.resize((256, 256), Image.BILINEAR)
-    left = (256 - IMAGE_SIZE) // 2
-    return resized.crop((left, left, left + IMAGE_SIZE, left + IMAGE_SIZE))
+    """Return the exact aspect-preserving crop used to create the model tensor."""
+    if _spatial_preprocess is None:
+        raise RuntimeError("Model image preprocessing is unavailable.")
+    return _spatial_preprocess(image)
 
 
 def _pil_to_base64(image: Image.Image, fmt: str = "JPEG", quality: int = 88) -> str:
@@ -730,14 +746,7 @@ def _call_gemini_model(model: str, report: dict[str, Any], question: str) -> str
         "systemInstruction": {
             "parts": [
                 {
-                    "text": (
-                        "You are DermoScan educational support. You are not medical advice. "
-                        "Explain the DermoScan report in plain language, including ABCDE criteria and risk levels when helpful. "
-                        "Do not diagnose. Never say the user has cancer or does not have cancer. "
-                        "Use terms such as lower-risk, concerning, or high-risk instead of diagnostic certainty. "
-                        "Recommend professional evaluation for concerning or high-risk results. "
-                        "Keep answers concise and grounded in the provided report context."
-                    )
+                    "text": REPORT_ASSISTANT_INSTRUCTIONS
                 }
             ]
         },
@@ -774,14 +783,7 @@ def _call_gemini_model(model: str, report: dict[str, Any], question: str) -> str
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Could not reach Gemini: {exc}") from exc
 
-    reply = _extract_gemini_text(response_payload)
-    if _contains_disallowed_diagnosis(reply):
-        return (
-            "I can explain what the DermoScan report indicates, but I cannot diagnose or rule out cancer. "
-            "This report is educational support, not medical advice. For concerning or high-risk results, "
-            "please arrange professional evaluation with a qualified clinician."
-        )
-    return reply
+    return sanitize_reply(_extract_gemini_text(response_payload))
 
 
 def _call_gemini(report: dict[str, Any], question: str) -> str:
@@ -914,4 +916,12 @@ async def chat(request: ChatRequest) -> ChatResponse:
     if report is None:
         raise HTTPException(status_code=404, detail="Scan report not found for reportId.")
 
-    return ChatResponse(reply=_call_gemini(report, message))
+    provider = configured_provider()
+    try:
+        if provider == "gemini":
+            reply = await asyncio.wait_for(asyncio.to_thread(_call_gemini, report, message), timeout=35)
+        else:
+            reply = await asyncio.wait_for(asyncio.to_thread(call_compatible_assistant, provider, report, message), timeout=35)
+    except asyncio.TimeoutError as exc:
+        raise HTTPException(503, "The report assistant timed out. Please retry shortly.") from exc
+    return ChatResponse(reply=reply)

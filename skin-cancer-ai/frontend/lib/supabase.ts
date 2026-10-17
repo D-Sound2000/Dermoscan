@@ -2,6 +2,12 @@ import { createBrowserClient } from "@supabase/ssr";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const tablePrefix = process.env.NEXT_PUBLIC_SUPABASE_TABLE_PREFIX ?? "";
+
+export const TABLES = {
+  profiles: `${tablePrefix}profiles`,
+  scans: `${tablePrefix}scans`,
+};
 
 type DemoUser = {
   id: string;
@@ -96,7 +102,7 @@ function createDemoClient() {
       },
     },
     from(table: string) {
-      if (table === "scans") {
+      if (table === TABLES.scans) {
         return {
           select() {
             return {
@@ -135,7 +141,7 @@ function createDemoClient() {
         };
       }
 
-      if (table === "profiles") {
+      if (table === TABLES.profiles) {
         return {
           select() {
             return {

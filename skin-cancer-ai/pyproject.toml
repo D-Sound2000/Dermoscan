@@ -17,3 +17,14 @@ app = "api:app"
 
 [tool.vercel]
 entrypoint = "api:app"
+
+# Cloud inference runs on CPU. Linux PyPI wheels otherwise pull several GB
+# of CUDA libraries and exceed Vercel's Python function bundle limit.
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+torchvision = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]

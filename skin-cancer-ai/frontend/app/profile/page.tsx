@@ -17,7 +17,7 @@ import {
   ShieldCheck,
   Loader2,
 } from "lucide-react";
-import { createClient, type Profile } from "@/lib/supabase";
+import { TABLES, createClient, type Profile } from "@/lib/supabase";
 
 // ─── Display helpers ──────────────────────────────────────────────────────────
 
@@ -111,7 +111,7 @@ export default function ProfilePage() {
       setEmail(user.email ?? "");
 
       const [{ data: profileData }, { data: factorsData }] = await Promise.all([
-        supabase.from("profiles").select("*").eq("id", user.id).single(),
+        supabase.from(TABLES.profiles).select("*").eq("id", user.id).single(),
         supabase.auth.mfa.listFactors(),
       ]);
 

@@ -15,7 +15,7 @@ import {
   TrendingDown,
   TrendingUp,
 } from "lucide-react";
-import { createClient, type Scan } from "@/lib/supabase";
+import { TABLES, createClient, type Scan } from "@/lib/supabase";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -27,22 +27,16 @@ function toSafeId(s: string) {
     .replace(/^-|-$/g, "");
 }
 
-function scoreTextColor(v: number) {
-  if (v > 0.6) return "text-orange-300";
-  if (v > 0.3) return "text-yellow-300";
-  return "text-emerald-300";
+function scoreTextColor(predictedClass: string) {
+  if (predictedClass === "Malignant") return "text-orange-300";
+  if (predictedClass === "Benign") return "text-emerald-300";
+  return "text-white/60";
 }
 
-function scoreBadgeStyle(v: number) {
-  if (v > 0.6) return "bg-orange-400/10 border-orange-400/25 text-orange-300";
-  if (v > 0.3) return "bg-yellow-400/10 border-yellow-400/25 text-yellow-300";
-  return "bg-emerald-400/10 border-emerald-400/25 text-emerald-300";
-}
-
-function scoreLabel(v: number) {
-  if (v > 0.6) return "Malignant";
-  if (v > 0.3) return "Moderate";
-  return "Benign";
+function scoreBadgeStyle(predictedClass: string) {
+  if (predictedClass === "Malignant") return "bg-orange-400/10 border-orange-400/25 text-orange-300";
+  if (predictedClass === "Benign") return "bg-emerald-400/10 border-emerald-400/25 text-emerald-300";
+  return "bg-white/5 border-white/10 text-white/60";
 }
 
 // ─── Chart component ──────────────────────────────────────────────────────────
@@ -76,6 +70,7 @@ function RiskSparkline({
     x: toX(i),
     y: toY(s.malignant_probability),
     v: s.malignant_probability,
+    predictedClass: s.predicted_class,
     date: new Date(s.scanned_at),
   }));
 
@@ -94,8 +89,7 @@ function RiskSparkline({
       ? `${linePath} L ${pts[n - 1].x.toFixed(1)} ${(PAD.t + ch).toFixed(1)} L ${pts[0].x.toFixed(1)} ${(PAD.t + ch).toFixed(1)} Z`
       : "";
 
-  const latest = sorted[n - 1].malignant_probability;
-  const color = latest > 0.5 ? "#fb923c" : "#22d3ee";
+  const color = sorted[n - 1].predicted_class === "Malignant" ? "#fb923c" : "#22d3ee";
   const gradId = `rg-${toSafeId(chartId)}`;
 
   const xLabelIdxs: number[] =
@@ -171,7 +165,7 @@ function RiskSparkline({
 
       {/* Data points + value labels */}
       {pts.map((p, i) => {
-        const pColor = p.v > 0.5 ? "#fb923c" : "#22d3ee";
+        const pColor = p.predictedClass === "Malignant" ? "#fb923c" : "#22d3ee";
         const labelY = Math.max(PAD.t - 4, p.y - 12);
         return (
           <g key={i}>
@@ -252,12 +246,12 @@ function MoleCard({ mole, index }: { mole: MoleGroup; index: number }) {
 
           <div className="shrink-0 flex flex-col items-end gap-1.5">
             <span
-              className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${scoreBadgeStyle(mole.latestRisk)}`}
+              className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${scoreBadgeStyle(mole.latestPrediction)}`}
             >
               {Math.round(mole.latestRisk * 100)}%
             </span>
-            <span className={`text-[10px] font-medium ${scoreTextColor(mole.latestRisk)}`}>
-              {scoreLabel(mole.latestRisk)}
+            <span className={`text-[10px] font-medium ${scoreTextColor(mole.latestPrediction)}`}>
+              {mole.latestPrediction}
             </span>
           </div>
         </div>
@@ -364,6 +358,7 @@ type MoleGroup = {
   label: string;
   scans: Scan[];
   latestRisk: number;
+  latestPrediction: string;
   trend: number;
   scanCount: number;
   lastScan: Date;
@@ -388,7 +383,7 @@ export default function MyMolesPage() {
       }
 
       const { data } = await supabase
-        .from("scans")
+        .from(TABLES.scans)
         .select("*")
         .eq("user_id", user.id)
         .order("scanned_at", { ascending: true });
@@ -418,6 +413,7 @@ export default function MyMolesPage() {
             label,
             scans: sorted,
             latestRisk: latest.malignant_probability,
+            latestPrediction: latest.predicted_class,
             trend: prev
               ? latest.malignant_probability - prev.malignant_probability
               : 0,

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import ShaderShowcase from "@/components/ui/hero";
-import { createClient, getValidSession } from "@/lib/supabase";
+import { TABLES, createClient, getValidSession } from "@/lib/supabase";
 
 export default function Home() {
   const router = useRouter();
@@ -18,7 +18,7 @@ export default function Home() {
         return;
       }
       const { data: profile } = await supabase
-        .from("profiles")
+        .from(TABLES.profiles)
         .select("skin_type, location_name, latitude, longitude")
         .eq("id", session.user.id)
         .single();

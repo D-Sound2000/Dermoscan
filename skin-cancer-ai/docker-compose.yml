@@ -1,15 +1,20 @@
-version: "3.8"
-
 services:
   backend:
     build:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     environment:
       - CHECKPOINT_PATH=/app/best_model.pth
       - PORT=8000
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - CHAT_PROVIDER=${CHAT_PROVIDER:-auto}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - OPENROUTER_MODEL=${OPENROUTER_MODEL:-nvidia/nemotron-3.5-lightning:free}
+      - OPENROUTER_FALLBACK_MODELS=${OPENROUTER_FALLBACK_MODELS:-nvidia/nemotron-3-super-120b-a12b:free}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - GROQ_MODEL=${GROQ_MODEL:-openai/gpt-oss-20b}
     volumes:
       - ./best_model.pth:/app/best_model.pth:ro
 
@@ -17,7 +22,12 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-}
+        NEXT_PUBLIC_SUPABASE_TABLE_PREFIX: ${NEXT_PUBLIC_SUPABASE_TABLE_PREFIX:-}
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     environment:
       - NODE_ENV=production
+      - DERMOSCAN_API_URL=http://backend:8000
