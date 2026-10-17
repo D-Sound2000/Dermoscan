@@ -26,6 +26,23 @@ where `vercel.json` describes both the Next.js frontend and FastAPI model.
 Deploying only `frontend/` does not update the model's heatmap code. Confirm
 the project and team before deploying, stage production with `--skip-domain`,
 verify the staged build, and promote it to update the recording URL.
+The model uses the Docker container runtime because the CPU PyTorch dependency
+bundle exceeds the standard Python function limit. Set `PORT=8000` on the Vercel
+project so its container router matches the backend's listening port.
+
+Report assistant configuration
+- Set `OPENROUTER_API_KEY` as a server Secret to use the default free Nemotron
+  3.5 Lightning model, with a free Nemotron 3 Super fallback. The application
+  rejects paid OpenRouter model IDs instead of silently switching to them.
+- Alternatively set `GROQ_API_KEY` and `CHAT_PROVIDER=groq`. The default Groq
+  model is `openai/gpt-oss-20b`; account usage limits still apply.
+- `CHAT_PROVIDER=auto` chooses OpenRouter, then Groq, then the existing Gemini
+  integration according to which server keys are configured. It does not switch
+  between providers during a failed request.
+- The same report-grounded instructions prohibit diagnosis, disease-probability
+  interpretations of raw scores, invented image findings, and tumor-boundary
+  claims about Grad-CAM. Empty responses and provider failures produce an error,
+  not a fabricated AI reply. Free-model availability is not guaranteed.
 
 The GitHub deployment workflow uses pinned Vercel CLI 64.5.0. Configure
 `VERCEL_TOKEN` as a repository secret, and `VERCEL_ORG_ID` and
