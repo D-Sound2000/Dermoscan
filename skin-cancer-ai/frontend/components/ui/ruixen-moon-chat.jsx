@@ -172,7 +172,7 @@ export default function RuixenMoonChat() {
 
         <div className="flex w-full max-w-3xl flex-1 flex-col items-center justify-center pb-5 pt-10">
           <div className="text-center">
-            <p className="font-mono text-[10px] uppercase tracking-[0.24em] text-cyan-100/75">Gemini context chat</p>
+            <p className="font-mono text-[10px] uppercase tracking-[0.24em] text-cyan-100/75">Report context chat</p>
             <h1 className="mt-3 text-4xl font-semibold text-white drop-shadow-sm sm:text-5xl">Ask about your scan</h1>
             <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-neutral-200 sm:text-base">
               Get plain-language explanations grounded in the selected DermoScan report.
