@@ -111,3 +111,9 @@ exhausting the free provider allowance for all visitors. Requests have a
 loading and provider failures do not display the internal sample forecast.
 The older Next.js weather proxy routes remain available but are no longer the
 active UV screen's transport.
+
+Image-quality checks are advisory: any decodable JPEG/PNG accepted by the upload
+API can be scanned even when the browser reports warnings (for example 78/100).
+The score and retake tips remain visible; they do not establish that a photo is
+suitable for medical interpretation. File-type, size, and decoding validation
+remain enforced by the upload API.

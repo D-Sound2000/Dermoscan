@@ -166,10 +166,6 @@ export default function ShaderShowcase() {
       inputRef.current?.click();
       return;
     }
-    if (!imageQuality?.passed) {
-      setUploadError("Please address the image-quality warnings before running the model.");
-      return;
-    }
 
     setIsSubmitting(true);
     setUploadError(null);
@@ -490,9 +486,12 @@ export default function ShaderShowcase() {
                         Image quality: {imageQuality.score}/100
                       </p>
                       {imageQuality.issues.length > 0 ? (
-                        <ul className="mt-2 space-y-1 text-xs leading-5 text-white/70">
-                          {imageQuality.guidance.map((item) => <li key={item}>• {item}</li>)}
-                        </ul>
+                        <>
+                          <p className="mt-1 text-xs text-white/60">Quality tips are optional. You can still run the scan.</p>
+                          <ul className="mt-2 space-y-1 text-xs leading-5 text-white/70">
+                            {imageQuality.guidance.map((item) => <li key={item}>• {item}</li>)}
+                          </ul>
+                        </>
                       ) : (
                         <p className="mt-1 text-xs text-white/60">Image passed basic technical checks. This does not validate that it is a skin lesion.</p>
                       )}
@@ -577,7 +576,7 @@ export default function ShaderShowcase() {
                   <motion.button
                     type="button"
                     onClick={analyzeFile}
-                    disabled={isSubmitting || isHeatmapLoading || isCheckingQuality || (!!selectedFile && !imageQuality?.passed)}
+                    disabled={isSubmitting || isHeatmapLoading || isCheckingQuality}
                     whileHover={isSubmitting || isHeatmapLoading ? undefined : { scale: 1.03 }}
                     whileTap={isSubmitting || isHeatmapLoading ? undefined : { scale: 0.97 }}
                     className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-gradient-to-r from-cyan-500 to-orange-500 px-6 text-sm font-semibold text-white shadow-lg shadow-cyan-950/35 transition hover:from-cyan-400 hover:to-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
