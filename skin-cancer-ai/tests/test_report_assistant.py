@@ -66,6 +66,21 @@ class ReportAssistantTests(unittest.TestCase):
     def test_hidden_reasoning_is_not_displayed(self):
         self.assertEqual(assistant.sanitize_reply("<think>internal text</think>Useful explanation."), "Useful explanation.")
 
+    def test_internal_probability_field_names_are_not_medical_probabilities(self):
+        self.assertEqual(assistant.sanitize_reply("The malignant probability is 0.4159."), "The malignant model score is 0.4159.")
+
+    @patch.dict("os.environ", {"OPENROUTER_API_KEY": "test"}, clear=True)
+    def test_whitespace_keepalives_do_not_block_fallback_indefinitely(self):
+        class KeepaliveResponse(io.BytesIO):
+            def read1(self, size):
+                return b" "
+
+        clock = iter(range(100))
+        with patch.object(assistant.time, "monotonic", side_effect=lambda: next(clock)):
+            with patch.object(assistant.request, "urlopen", side_effect=[KeepaliveResponse(), completion("A bounded reply.")]) as transport:
+                self.assertEqual(assistant.call_compatible_assistant("openrouter", REPORT, "Explain"), "A bounded reply.")
+                self.assertEqual(transport.call_count, 2)
+
 
 if __name__ == "__main__":
     unittest.main()

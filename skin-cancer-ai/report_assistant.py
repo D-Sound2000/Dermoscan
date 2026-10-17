@@ -3,6 +3,7 @@
 import json
 import os
 import re
+import time
 from urllib import error, request
 
 from fastapi import HTTPException
@@ -112,7 +113,11 @@ def call_compatible_assistant(provider: str, report: dict, question: str) -> str
     if not models or (provider == "openrouter" and any(not (model.endswith(":free") or model == "openrouter/free") for model in models)):
         raise HTTPException(503, "DermoScan's OpenRouter configuration must use free models only.")
 
+    request_deadline = time.monotonic() + 25
     for model in models:
+        response_deadline = min(request_deadline, time.monotonic() + 10)
+        if time.monotonic() >= request_deadline:
+            break
         payload = {
             "model": model,
             "messages": [
@@ -129,8 +134,20 @@ def call_compatible_assistant(provider: str, report: dict, question: str) -> str
             "Content-Type": "application/json", "Authorization": f"Bearer {key}",
         }, method="POST")
         try:
-            with request.urlopen(req, timeout=15) as response:
-                result = json.loads(response.read())
+            with request.urlopen(req, timeout=5) as response:
+                chunks = []
+                size = 0
+                while True:
+                    if time.monotonic() >= response_deadline:
+                        raise TimeoutError("Report assistant response deadline exceeded.")
+                    chunk = response.read1(65536)
+                    if not chunk:
+                        break
+                    size += len(chunk)
+                    if size > 2 * 1024 * 1024:
+                        raise ValueError("Report assistant response is too large.")
+                    chunks.append(chunk)
+                result = json.loads(b"".join(chunks))
             reply = result.get("choices", [{}])[0].get("message", {}).get("content")
             if isinstance(reply, str) and reply.strip():
                 return sanitize_reply(reply)
@@ -141,6 +158,6 @@ def call_compatible_assistant(provider: str, report: dict, question: str) -> str
             if exc.code not in (404, 408, 429, 500, 502, 503, 504):
                 break
         except (error.URLError, TimeoutError, ValueError, TypeError, IndexError, AttributeError):
-            # At most two 15-second calls keep retries inside the frontend timeout.
+            # Bound total time even if an upstream sends whitespace keepalives.
             continue
     raise HTTPException(503, "The report assistant is busy or unavailable. Please retry shortly.")

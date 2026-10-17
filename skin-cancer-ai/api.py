@@ -18,6 +18,7 @@ Environment variables:
 from __future__ import annotations
 
 import base64
+import asyncio
 import io
 import json
 import os
@@ -916,5 +917,11 @@ async def chat(request: ChatRequest) -> ChatResponse:
         raise HTTPException(status_code=404, detail="Scan report not found for reportId.")
 
     provider = configured_provider()
-    reply = _call_gemini(report, message) if provider == "gemini" else call_compatible_assistant(provider, report, message)
+    try:
+        if provider == "gemini":
+            reply = await asyncio.wait_for(asyncio.to_thread(_call_gemini, report, message), timeout=35)
+        else:
+            reply = await asyncio.wait_for(asyncio.to_thread(call_compatible_assistant, provider, report, message), timeout=35)
+    except asyncio.TimeoutError as exc:
+        raise HTTPException(503, "The report assistant timed out. Please retry shortly.") from exc
     return ChatResponse(reply=reply)
