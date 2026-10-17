@@ -102,3 +102,12 @@ The original database `pobgbounurhjvvtpqckb` is untouched. Its accounts and scan
 history are not copied to the recording project. Use a fresh recording account
 or create an account in the recording app. Keep generated recording credentials
 outside the repository and outside the model-handoff document.
+
+The active UV screen requests forecast/geocoding JSON directly from Open-Meteo
+in the browser. Open-Meteo documents CORS support in its official repository:
+https://github.com/open-meteo/open-meteo . This avoids a shared Vercel egress IP
+exhausting the free provider allowance for all visitors. Requests have a
+10-second timeout. Forecast cards appear only after a successful live response;
+loading and provider failures do not display the internal sample forecast.
+The older Next.js weather proxy routes remain available but are no longer the
+active UV screen's transport.
