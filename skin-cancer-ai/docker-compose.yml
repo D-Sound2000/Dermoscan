@@ -1,15 +1,14 @@
-version: "3.8"
-
 services:
   backend:
     build:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     environment:
       - CHECKPOINT_PATH=/app/best_model.pth
       - PORT=8000
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
     volumes:
       - ./best_model.pth:/app/best_model.pth:ro
 
@@ -17,7 +16,11 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-}
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     environment:
       - NODE_ENV=production
+      - DERMOSCAN_API_URL=http://backend:8000

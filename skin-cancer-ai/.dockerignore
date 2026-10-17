@@ -1,0 +1,12 @@
+frontend
+.git
+.vercel
+.env*
+.scan_reports.json
+venv
+.venv
+__pycache__
+data
+checkpoints
+*.ipynb
+*.log

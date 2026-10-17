@@ -196,10 +196,18 @@ def load_model(ckpt_path: Path, device: torch.device) -> tuple[nn.Module, float 
 
 # ── Preprocessing ─────────────────────────────────────────────────────────────
 
-_preprocess = (
+_spatial_preprocess = (
     transforms.Compose([
         transforms.Resize(256),
         transforms.CenterCrop(IMAGE_SIZE),
+    ])
+    if transforms is not None
+    else None
+)
+
+_preprocess = (
+    transforms.Compose([
+        _spatial_preprocess,
         transforms.ToTensor(),
         transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD),
     ])
@@ -576,9 +584,10 @@ def _heuristic_prediction(image: Image.Image) -> tuple[str, float, float]:
 
 
 def _center_crop_for_model(image: Image.Image) -> Image.Image:
-    resized = image.resize((256, 256), Image.BILINEAR)
-    left = (256 - IMAGE_SIZE) // 2
-    return resized.crop((left, left, left + IMAGE_SIZE, left + IMAGE_SIZE))
+    """Return the exact aspect-preserving crop used to create the model tensor."""
+    if _spatial_preprocess is None:
+        raise RuntimeError("Model image preprocessing is unavailable.")
+    return _spatial_preprocess(image)
 
 
 def _pil_to_base64(image: Image.Image, fmt: str = "JPEG", quality: int = 88) -> str:
