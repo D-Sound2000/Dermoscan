@@ -6,7 +6,6 @@ import { MeshGradient, PulsingBorder } from "@paper-design/shaders-react";
 import { motion, useReducedMotion } from "framer-motion";
 import {
   Activity,
-  AlertTriangle,
   BarChart3,
   BookmarkPlus,
   Camera,
@@ -479,22 +478,13 @@ export default function ShaderShowcase() {
                     <div className="rounded-2xl border border-cyan-200/20 bg-cyan-100/10 px-4 py-3 text-sm text-cyan-50/80">
                       Checking focus, lighting, resolution, and glare…
                     </div>
-                  ) : imageQuality ? (
-                    <div className={`rounded-2xl border px-4 py-3 ${imageQuality.passed ? "border-emerald-300/25 bg-emerald-300/10" : "border-orange-300/30 bg-orange-300/10"}`}>
+                  ) : imageQuality?.passed ? (
+                    <div className="rounded-2xl border border-emerald-300/25 bg-emerald-300/10 px-4 py-3">
                       <p className="flex items-center gap-2 text-sm font-semibold text-white">
-                        {imageQuality.passed ? <Check className="size-4 text-emerald-300" /> : <AlertTriangle className="size-4 text-orange-300" />}
+                        <Check className="size-4 text-emerald-300" />
                         Image quality: {imageQuality.score}/100
                       </p>
-                      {imageQuality.issues.length > 0 ? (
-                        <>
-                          <p className="mt-1 text-xs text-white/60">Quality tips are optional. You can still run the scan.</p>
-                          <ul className="mt-2 space-y-1 text-xs leading-5 text-white/70">
-                            {imageQuality.guidance.map((item) => <li key={item}>• {item}</li>)}
-                          </ul>
-                        </>
-                      ) : (
-                        <p className="mt-1 text-xs text-white/60">Image passed basic technical checks. This does not validate that it is a skin lesion.</p>
-                      )}
+                      <p className="mt-1 text-xs text-white/60">Image passed basic technical checks. This does not validate that it is a skin lesion.</p>
                     </div>
                   ) : null}
                 </div>

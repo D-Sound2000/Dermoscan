@@ -114,6 +114,7 @@ active UV screen's transport.
 
 Image-quality checks are advisory: any decodable JPEG/PNG accepted by the upload
 API can be scanned even when the browser reports warnings (for example 78/100).
-The score and retake tips remain visible; they do not establish that a photo is
+Flagged images no longer show a quality-warning banner. The quality score is
+still retained with saved captures; it does not establish that a photo is
 suitable for medical interpretation. File-type, size, and decoding validation
 remain enforced by the upload API.
