@@ -15,7 +15,7 @@ import {
   TrendingDown,
   TrendingUp,
 } from "lucide-react";
-import { createClient, type Scan } from "@/lib/supabase";
+import { TABLES, createClient, type Scan } from "@/lib/supabase";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -383,7 +383,7 @@ export default function MyMolesPage() {
       }
 
       const { data } = await supabase
-        .from("scans")
+        .from(TABLES.scans)
         .select("*")
         .eq("user_id", user.id)
         .order("scanned_at", { ascending: true });

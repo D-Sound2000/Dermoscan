@@ -26,7 +26,7 @@ import {
   X,
 } from "lucide-react";
 import { Header } from "@/components/ui/header-2";
-import { createClient } from "@/lib/supabase";
+import { TABLES, createClient } from "@/lib/supabase";
 import { analyzeImageQuality, createPrivatePreview, type ImageQualityResult } from "@/lib/image-quality";
 
 const signalCards = [
@@ -211,7 +211,7 @@ export default function ShaderShowcase() {
     const { data: { user } } = await supabaseRef.current.auth.getUser();
     if (!user) return;
     const { data } = await supabaseRef.current
-      .from("scans")
+      .from(TABLES.scans)
       .select("mole_label")
       .eq("user_id", user.id);
     const allLabels = (data ?? []).map((r: { mole_label: string }) => r.mole_label);
@@ -229,7 +229,7 @@ export default function ShaderShowcase() {
     if (!user) return;
     setIsSaving(true);
     const imagePreview = selectedFile ? await createPrivatePreview(selectedFile) : null;
-    const { error } = await supabaseRef.current.from("scans").insert({
+    const { error } = await supabaseRef.current.from(TABLES.scans).insert({
       user_id: user.id,
       mole_label: moleInput.trim(),
       malignant_probability: prediction.malignant_probability,

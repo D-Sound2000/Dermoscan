@@ -85,3 +85,20 @@ Required GitHub secrets for full automation
 Railway notes
 - Connect your repository in Railway or create a service that pulls the image from `ghcr.io/<owner>/dermoscan-backend:latest` (the CI pushes images there). Set `CHECKPOINT_URL` and other env vars in Railway service settings.
 
+
+## Isolated recording database
+
+The accessible recording deployment uses Supabase project `phmmuurmjzcfbtyekhvi`
+with `NEXT_PUBLIC_SUPABASE_TABLE_PREFIX=dermoscan_`. The restored project already
+contained an older application's tables and auth trigger. Migration
+`20261017072825_isolate_dermoscan_tables.sql` creates separate
+`dermoscan_profiles` and `dermoscan_scans` tables with owner-scoped RLS and all
+capture-context fields; it does not alter the older tables or auth trigger.
+Profiles are created by the authenticated onboarding upsert.
+
+Set the public URL, public anon key, and table prefix at frontend build time.
+Leaving the prefix blank preserves the original `profiles`/`scans` contract.
+The original database `pobgbounurhjvvtpqckb` is untouched. Its accounts and scan
+history are not copied to the recording project. Use a fresh recording account
+or create an account in the recording app. Keep generated recording credentials
+outside the repository and outside the model-handoff document.

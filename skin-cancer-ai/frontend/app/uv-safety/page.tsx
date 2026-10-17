@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, ScanLine } from "lucide-react";
 import { WeatherSafetyAdvisor } from "@/components/ui/weather-safety-advisor";
-import { createClient, getValidSession } from "@/lib/supabase";
+import { TABLES, createClient, getValidSession } from "@/lib/supabase";
 
 type LocationState = {
   name: string;
@@ -27,7 +27,7 @@ export default function UVSafetyPage() {
         return;
       }
       const { data: profile } = await supabase
-        .from("profiles")
+        .from(TABLES.profiles)
         .select("skin_type, location_name, latitude, longitude")
         .eq("id", session.user.id)
         .single();

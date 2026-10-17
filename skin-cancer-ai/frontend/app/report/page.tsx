@@ -4,7 +4,7 @@ import { Suspense, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, Download, ShieldAlert } from "lucide-react";
-import { createClient, type Scan } from "@/lib/supabase";
+import { TABLES, createClient, type Scan } from "@/lib/supabase";
 
 function ReportContent() {
   const params = useSearchParams();
@@ -21,7 +21,7 @@ function ReportContent() {
         router.replace("/onboarding");
         return;
       }
-      const { data } = await supabase.from("scans").select("*").eq("user_id", user.id).order("scanned_at", { ascending: true });
+      const { data } = await supabase.from(TABLES.scans).select("*").eq("user_id", user.id).order("scanned_at", { ascending: true });
       setScans(((data ?? []) as Scan[]).filter((scan) => scan.mole_label === mole));
       setLoading(false);
     }
